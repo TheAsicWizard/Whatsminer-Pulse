@@ -60,6 +60,19 @@ app.use((req, res, next) => {
 });
 
 (async () => {
+  const { seedDatabase } = await import("./seed");
+  const { startSimulation } = await import("./simulation");
+
+  try {
+    await import("./db");
+    const { execSync } = await import("child_process");
+    execSync("npx drizzle-kit push --force", { stdio: "inherit" });
+    await seedDatabase();
+    startSimulation();
+  } catch (err) {
+    console.error("Database setup error:", err);
+  }
+
   await registerRoutes(httpServer, app);
 
   app.use((err: any, _req: Request, res: Response, next: NextFunction) => {

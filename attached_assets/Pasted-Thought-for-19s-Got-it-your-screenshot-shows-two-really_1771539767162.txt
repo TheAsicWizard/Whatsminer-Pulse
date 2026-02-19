@@ -1,0 +1,819 @@
+Thought for 19s
+
+Got it — your screenshot shows two really important clues:
+
+ARP resolves 10.21.29.173 to a MAC (ce-0c-1d-00-47-ed) ✅ so you’re on the same LAN and talking to a device at that IP.
+
+Test-NetConnection -Port 80 is hanging at “Waiting for response” ❗ (that’s a silent drop/filter, not a clean “refused”).
+And your loop printed 22 False (SSH not open).
+
+That combination usually means TCP to those ports is being filtered/blocked (either by the miner’s firewall / access control, or by something upstream), OR the device at that IP isn’t the miner anymore.
+
+Do this next (fast + doesn’t hang)
+
+Use a timeout-based port test instead of Test-NetConnection (which can stall when packets are dropped):
+
+$ip="10.21.29.173"
+$ports = 22,80,443,4028,4029,8888,8889
+
+foreach($p in $ports){
+  $client = New-Object System.Net.Sockets.TcpClient
+  $iar = $client.BeginConnect($ip,$p,$null,$null)
+  $ok = $iar.AsyncWaitHandle.WaitOne(800,$false)  # 800ms timeout
+  if($ok -and $client.Connected){ $client.EndConnect($iar); $client.Close(); "$p  True" }
+  else { $client.Close(); "$p  False" }
+}
+
+How to read the output
+
+If 80 or 443 = True → open the web UI and check Security / API / Whitelist / IP access mode.
+
+If all are False → something is filtering TCP entirely, or it’s not actually the miner at that IP.
+
+If 4029 True → your TCP API should work and we’ll re-run the command.
+
+If 4029 False but log said 4029 → API is disabled/bound local/blocked.
+
+Confirm it’s really the miner (not just “a device”)
+
+Run:
+
+$ip="10.21.29.173"
+arp -a | findstr $ip
+
+
+Then compare that MAC to:
+
+the miner’s sticker MAC, or
+
+your switch MAC table (if you have access)
+
+If the MAC doesn’t match the miner, DHCP reused the IP.
+
+If you can reach the web UI
+
+Try both in a browser:
+
+http://10.21.29.173
+
+https://10.21.29.173
+
+If https works but http hangs, that’s normal on some configs (80 blocked, 443 open).
+
+Why this matters for your original goal (API from logs)
+
+Your logs did reveal the likely API port (4029, “IP access mode”), but your network results say you currently can’t reach that service from your PC — either because:
+
+it’s blocked by whitelist/firewall, or
+
+that IP isn’t the miner right now, or
+
+the API isn’t listening on LAN anymore.
+
+Paste the output of the timeout-based port test (the block above). With just that, I can tell you exactly which scenario you’re in and the quickest fix.
+
+Boom — that screenshot answers it:
+
+80 = True (web UI up)
+
+443 = True
+
+4028 = True ✅
+
+4029 = False ❌
+
+22 = False (SSH closed)
+
+So the miner’s LAN-facing TCP API is on 4028, not 4029 (your boot log line about 4029 was either from a different state, different service, or it changed after boot).
+
+Use this as the “miner API” endpoint
+
+✅ 10.21.29.173:4028
+
+Test the API from your PC (PowerShell)
+
+Try summary first:
+
+$ip = "10.21.29.173"
+$port = 4028
+$cmd = '{"command":"summary"}' + "`n"   # newline helps some firmwares
+
+try {
+  $client = New-Object System.Net.Sockets.TcpClient
+  $client.Connect($ip,$port)
+
+  $stream = $client.GetStream()
+  $bytes = [Text.Encoding]::ASCII.GetBytes($cmd)
+  $stream.Write($bytes,0,$bytes.Length)
+
+  Start-Sleep -Milliseconds 200
+
+  $buffer = New-Object byte[] 65535
+  $read = $stream.Read($buffer,0,$buffer.Length)
+  $resp = [Text.Encoding]::ASCII.GetString($buffer,0,$read)
+
+  $resp
+
+  $stream.Close()
+  $client.Close()
+}
+catch {
+  $_.Exception.Message
+}
+
+
+If you get a response that looks like STATUS=...|SUMMARY=... (common cgminer/btminer format), you’re in.
+
+Other useful commands
+
+Swap $cmd to:
+
+{"command":"stats"}
+
+{"command":"pools"}
+
+{"command":"devs"}
+
+Why your logs said 4029 but you’re seeing 4028
+
+Two common reasons:
+
+The log captured a service starting on 4029 at boot, but the actual exposed API is 4028 (many miners default to 4028).
+
+Firmware/settings toggled after boot (or that 4029 service bound to localhost only).
+
+But since 4028 is open, don’t fight it — use 4028.
+
+If you paste the output of the summary test, I’ll tell you exactly what fields to parse (hashrate, temps, fan, chip status, etc.) and I can give you a clean PowerShell function that returns a structured object.
+
+PS C:\Users\KoreeCaraway> $ip = "10.21.29.173"
+PS C:\Users\KoreeCaraway> $port = 4028
+PS C:\Users\KoreeCaraway> $cmd = '{"command":"summary"}' + "n"   # newline helps some firmwares
+PS C:\Users\KoreeCaraway>
+PS C:\Users\KoreeCaraway> try {
+>>   $client = New-Object System.Net.Sockets.TcpClient
+>>   $client.Connect($ip,$port)
+>>
+>>   $stream = $client.GetStream()
+>>   $bytes = [Text.Encoding]::ASCII.GetBytes($cmd)
+>>   $stream.Write($bytes,0,$bytes.Length)
+>>
+>>   Start-Sleep -Milliseconds 200
+>>
+>>   $buffer = New-Object byte[] 65535
+>>   $read = $stream.Read($buffer,0,$buffer.Length)
+>>   $resp = [Text.Encoding]::ASCII.GetString($buffer,0,$read)
+>>
+>>   $resp
+>>
+>>   $stream.Close()
+>>   $client.Close()
+>> }
+>> catch {
+>>   $_.Exception.Message
+>> }
+{"STATUS":[{"STATUS":"S","Msg":"Summary"}],"SUMMARY":[{"Elapsed":24,"MHS av":0.00,"MHS 5s":0.00,"MHS 1m":0.00,"MHS 5m":0.00,"MHS 15m":0.00,"HS RT":0.00,"Accepted":0,"Rejected":0,"Total MH":0.00,"Temperature":34.88,"freq_avg":0,"Fan Speed In":0,"Fan Speed Out":0,"Power":262,"Power Rate":0.00,"Pool Rejected%":0.0000,"Pool Stale%":0.0000,"Uptime":1140,"Target Freq":360,"Target MHS":0.00,"Env Temp":29.06,"Power Mode":"Normal","Factory GHS":184229,"Power Limit":3600,"Chip Temp Min":0.00,"Chip Temp Max":0.00,"Chip Temp Avg":0.00,"Btminer Fast Boot":"disable","Upfreq Complete":0}],"id":1}
+
+PS C:\Users\KoreeCaraway>
+
+Yep — that’s the miner API, confirmed. 🎯
+
+You’re successfully talking to the WhatsMiner cgminer/btminer JSON API over TCP:
+
+Host: 10.21.29.173
+
+Port: 4028
+
+Command: {"command":"summary"}
+
+And the device is returning JSON with STATUS + SUMMARY (perfect for scripting).
+
+A few notes from your response:
+
+Elapsed: 24 → the mining process has only been up ~24 seconds
+
+Hashrate fields are all 0.00 right now (MHS 5s/1m/…, HS RT, Target MHS) which is normal if it’s booting, not hashing yet, or still ramping
+
+Power: 262 and Env Temp: 29.06, Temperature: 34.88 are already populating
+
+Fans are 0 right now (again often early boot / not started / not reading yet)
+
+Factory GHS: 184229 (nameplate-ish rating shown by firmware)
+
+Power Limit: 3600
+
+Power Mode: "Normal"
+
+Quick “miner API from logs” answer
+
+Logs can hint the API exists, but the real truth is what you just proved with port scanning + query:
+✅ Your miner’s accessible API is tcp://<ip>:4028 using cgminer/btminer JSON commands.
+
+If you want: a clean PowerShell function you can reuse
+
+Here’s a drop-in function that:
+
+connects
+
+sends a command
+
+returns parsed JSON (as an object)
+
+function Invoke-WhatsMinerApi {
+  param(
+    [Parameter(Mandatory)] [string] $Ip,
+    [int] $Port = 4028,
+    [Parameter(Mandatory)] [string] $Command,
+    [int] $TimeoutMs = 1500
+  )
+
+  $payload = (@{ command = $Command; id = 1 } | ConvertTo-Json -Compress) + "`n"
+
+  $client = New-Object System.Net.Sockets.TcpClient
+  try {
+    $iar = $client.BeginConnect($Ip, $Port, $null, $null)
+    if (-not $iar.AsyncWaitHandle.WaitOne($TimeoutMs, $false)) {
+      throw "Timeout connecting to $Ip`:$Port"
+    }
+    $client.EndConnect($iar) | Out-Null
+
+    $stream = $client.GetStream()
+    $stream.ReadTimeout  = $TimeoutMs
+    $stream.WriteTimeout = $TimeoutMs
+
+    $bytes = [Text.Encoding]::ASCII.GetBytes($payload)
+    $stream.Write($bytes, 0, $bytes.Length)
+
+    Start-Sleep -Milliseconds 150
+
+    $buffer = New-Object byte[] 65535
+    $read = $stream.Read($buffer, 0, $buffer.Length)
+    $resp = [Text.Encoding]::ASCII.GetString($buffer, 0, $read)
+
+    return ($resp | ConvertFrom-Json)
+  }
+  finally {
+    if ($client.Connected) { $client.Close() } else { $client.Dispose() }
+  }
+}
+
+# Example:
+$r = Invoke-WhatsMinerApi -Ip "10.21.29.173" -Command "summary"
+$r.SUMMARY[0]
+
+Common calls
+Invoke-WhatsMinerApi -Ip "10.21.29.173" -Command "stats"
+Invoke-WhatsMinerApi -Ip "10.21.29.173" -Command "pools"
+Invoke-WhatsMinerApi -Ip "10.21.29.173" -Command "devs"
+
+
+If you tell me what you’re trying to do with the API (just read health, detect hashboard issues, fan/temp alarms, etc.), I’ll give you a ready-to-run script that polls multiple miners and flags real hardware problems.
+
+What can i build with replit using this information
+
+With ip:4028 + the JSON commands (summary, stats, devs, pools) you can build a WhatsMiner dashboard + health alert system on Replit really easily. Here are the best “worth building” ideas, from simple → powerful:
+
+1) Fleet Dashboard (the obvious winner)
+
+What it does
+
+You paste in a list of miner IPs
+
+It polls each miner’s API every X seconds
+
+Shows: hashrate, temps, fan RPM, power, uptime, pool, mode
+
+Flags anything abnormal (red/yellow/green)
+
+Why it’s good
+
+Instant value for techs + leads
+
+You can scale from 1 miner to 1,000 without changing the idea
+
+2) “Hashdown / Going Offline” Early Warning
+
+Use API snapshots to catch “it’s about to die” signals:
+
+hashrate drops vs baseline
+
+temp rising while hashrate drops
+
+fans stuck at 0 / low RPM
+
+rejected/stale spikes
+
+frequent restarts (uptime resets)
+
+It can alert before the miner fully stops hashing.
+
+3) Preventive Maintenance Score (PM/FRU prediction)
+
+Build a simple scoring model that outputs:
+
+“Healthy / Watch / Needs Attention”
+based on trends like:
+
+chip temp delta (min/max/avg widening)
+
+fan performance over time
+
+power increasing while hashrate flat
+
+uptime resets / instability
+
+board-level issues (usually in devs / stats)
+
+Even a basic rule-based score is extremely useful.
+
+4) Log + API “Single Pane of Glass”
+
+If you can also grab logs (or upload log zips), combine:
+
+API live telemetry
+
+last 200 lines of logs (if you collect them separately)
+So when a miner looks bad, the UI shows the probable cause.
+
+5) Auto Ticket / Work Order Generator
+
+When a miner fails a rule:
+
+create a ticket entry: miner IP, site, symptoms, “likely fan failure” or “board 2 dead”
+
+assign to tech / queue
+
+export to CSV or push to Slack/Teams
+
+6) “Power Efficiency” Tracker
+
+Track:
+
+GHS/W (efficiency)
+
+performance per power mode
+
+detect inefficient miners (same power, lower hashrate)
+
+This is gold for ops teams.
+
+A solid MVP you can build in Replit in 1 project
+“WhatsMiner Pulse”
+
+Pages
+
+Dashboard: table of miners + status lights
+
+Miner Detail: charts for temp, hashrate, power over time
+
+Rules/Alerts: configure thresholds
+
+Inventory Notes (optional): board swaps, fan swaps, etc.
+
+Backend
+
+Node.js Express server that polls miners via TCP socket (4028)
+
+Stores history in SQLite (simple) or Postgres later
+
+Frontend
+
+Simple React UI (or just server-rendered HTML to keep it fast)
+
+Here’s the key code concept you’ll use (Replit Node)
+
+(Just so you see how direct it is)
+
+open TCP socket to ip:4028
+
+send: {"command":"summary"}\n
+
+read JSON response
+
+render it
+
+If you want, I’ll generate the full Replit starter project with:
+
+miners.json list
+
+polling loop
+
+/api/miners endpoint returning live data
+
+a clean dashboard UI
+
+Tell me which direction you want:
+
+simple dashboard only
+
+dashboard + alerts
+
+full PM scoring + history charts
+
+The thing is our miners have dynamic ips
+
+No problem — dynamic IPs are super common. You just need a stable identifier to find each miner, then map it to the current IP.
+
+Here are the best ways to handle it (pick the one you can actually do in your environment):
+
+Option A (best): DHCP reservations
+
+Make IPs “dynamic but consistent” by reserving them in DHCP using each miner’s MAC.
+
+Pros: simplest, no code complexity
+
+Cons: requires network access
+
+If you can’t do this, build discovery.
+
+Option B: Discovery scan on a subnet (works anywhere on LAN)
+
+Your Replit app can:
+
+scan the subnet(s) (ex: 10.21.29.0/24)
+
+test port 4028
+
+call {"command":"summary"} (or stats)
+
+read a unique miner identity from the response
+
+store mapping: miner_id -> current_ip
+
+What unique ID can we use?
+Usually one of these shows up in stats or devs:
+
+Miner / Type
+
+Serial / SN
+
+MAC
+
+sometimes Hostname
+
+We’ll confirm by running:
+
+summary
+
+stats
+
+devs
+
+and checking which field is stable.
+
+Important catch
+
+Replit is hosted on the internet, so it cannot scan your private LAN directly unless:
+
+you run it inside your network, or
+
+you run a small “agent” on a local PC/Raspberry Pi that reports to Replit.
+
+That’s usually the clean architecture:
+
+✅ Replit = web dashboard + database + alerts
+✅ Local Agent = scans LAN + polls miners + sends data up
+
+Option C: Use miner hostname + mDNS/DNS (nice if available)
+
+If miners have hostnames like whatsminer-1234 and your network resolves them:
+
+your app connects to hostname instead of IP
+
+DNS keeps up when IP changes
+
+Works great if IT has internal DNS set up.
+
+Option D: Pull IPs from router/switch API
+
+If you can query:
+
+DHCP leases
+
+ARP table
+
+switch MAC table
+You can resolve MAC -> IP without scanning every address.
+
+What I recommend you build (practical + field-friendly)
+Build a “Local Poller Agent” + Replit Dashboard
+
+Local agent (runs on a Windows box on-site)
+
+scans 10.21.29.0/24 (or multiple subnets)
+
+finds anything with port 4028 open
+
+queries stats/summary
+
+extracts miner SN/MAC
+
+posts results to your Replit app every 15–30 seconds
+
+Replit app
+
+stores latest state per miner SN/MAC
+
+shows dashboard + history + alerts
+
+lets you label miners (site/rack/row)
+
+If you want, I can generate both parts end-to-end
+
+To do it without extra questions, here’s a default that works well:
+
+Agent: PowerShell script (easy for you to run as a scheduled task)
+
+Server: Replit Node/Express + SQLite
+
+Auth: simple shared token header
+
+One quick thing to confirm (so I don’t build the wrong architecture)
+
+Do you want the agent on:
+
+a Windows PC on the same network as miners (recommended), or
+
+a Raspberry Pi/Linux box?
+
+If you answer “Windows”, I’ll drop a full paste-and-run PowerShell agent + the Replit project code.
+
+Do we get the mac from the api port?
+
+Sometimes yes, but not always from summary. On WhatsMiner’s cgminer/btminer API (4028), the MAC (or a unique identifier like serial) is usually exposed via stats (and sometimes devs). So the right move is: query stats and look for a MAC/SN field.
+
+Quick test on your miner (PowerShell)
+
+This will call stats and print any fields that look like MAC/serial/hostname:
+
+$ip="10.21.29.173"; $port=4028
+$cmd = '{"command":"stats"}' + "`n"
+
+$client = New-Object System.Net.Sockets.TcpClient
+$client.Connect($ip,$port)
+$stream = $client.GetStream()
+$bytes = [Text.Encoding]::ASCII.GetBytes($cmd)
+$stream.Write($bytes,0,$bytes.Length)
+
+Start-Sleep -Milliseconds 250
+
+$buffer = New-Object byte[] 262144
+$read = $stream.Read($buffer,0,$buffer.Length)
+$resp = [Text.Encoding]::ASCII.GetString($buffer,0,$read)
+
+# Parse JSON and search for likely ID fields
+$j = $resp | ConvertFrom-Json
+
+# Flatten-ish view of keys and values
+$j | ConvertTo-Json -Depth 6 | Out-String
+
+$client.Close()
+
+
+If you don’t want to dump everything, run this instead to extract likely identifiers:
+
+$ip="10.21.29.173"; $port=4028
+$cmd = '{"command":"stats"}' + "`n"
+
+$client = New-Object System.Net.Sockets.TcpClient
+$client.Connect($ip,$port)
+$stream = $client.GetStream()
+$stream.Write([Text.Encoding]::ASCII.GetBytes($cmd),0,([Text.Encoding]::ASCII.GetBytes($cmd)).Length)
+Start-Sleep -Milliseconds 250
+
+$buffer = New-Object byte[] 262144
+$read = $stream.Read($buffer,0,$buffer.Length)
+$j = ([Text.Encoding]::ASCII.GetString($buffer,0,$read) | ConvertFrom-Json)
+
+# Search for keys that often contain stable identity
+$keysToFind = 'mac','sn','serial','hostname','host','miner','model','uuid','id'
+$j.PSObject.Properties | Out-Null
+
+# Walk all nested objects/arrays and find matching keys
+function Find-Keys($obj){
+  if($null -eq $obj){ return }
+  if($obj -is [System.Collections.IDictionary]){
+    foreach($k in $obj.Keys){
+      if($keysToFind -contains ($k.ToString().ToLower())){
+        "{0} = {1}" -f $k, $obj[$k]
+      }
+      Find-Keys $obj[$k]
+    }
+  } elseif($obj -is [System.Collections.IEnumerable] -and -not ($obj -is [string])){
+    foreach($i in $obj){ Find-Keys $i }
+  } else {
+    # leaf
+  }
+}
+Find-Keys $j
+$client.Close()
+
+What you’ll likely see
+
+Depending on firmware, one of these shows up:
+
+MAC / mac
+
+SN / Serial
+
+Hostname
+
+sometimes a board/controller ID
+
+If the API does not return MAC
+
+No worries — you can still uniquely track miners using:
+
+Serial number (SN) (best)
+
+Miner name/hostname (if unique)
+
+or fallback: MAC from ARP, once you know the miner’s current IP:
+
+arp -a | findstr 10.21.29.173
+
+Best practice for dynamic IPs: use SN or MAC as the primary key, and store “current IP” as a changing property.
+
+If you run {"command":"stats"} and paste the JSON response here, I’ll point out the exact field you should use as the stable ID.
+
+S C:\Users\KoreeCaraway> $ip="10.21.29.173"; $port=4028
+PS C:\Users\KoreeCaraway> $cmd = '{"command":"stats"}' + "n"
+PS C:\Users\KoreeCaraway>
+PS C:\Users\KoreeCaraway> $client = New-Object System.Net.Sockets.TcpClient
+PS C:\Users\KoreeCaraway> $client.Connect($ip,$port)
+PS C:\Users\KoreeCaraway> $stream = $client.GetStream()
+PS C:\Users\KoreeCaraway> $bytes = [Text.Encoding]::ASCII.GetBytes($cmd)
+PS C:\Users\KoreeCaraway> $stream.Write($bytes,0,$bytes.Length)
+PS C:\Users\KoreeCaraway>
+PS C:\Users\KoreeCaraway> Start-Sleep -Milliseconds 250
+PS C:\Users\KoreeCaraway>
+PS C:\Users\KoreeCaraway> $buffer = New-Object byte[] 262144
+PS C:\Users\KoreeCaraway> $read = $stream.Read($buffer,0,$buffer.Length)
+PS C:\Users\KoreeCaraway> $resp = [Text.Encoding]::ASCII.GetString($buffer,0,$read)
+PS C:\Users\KoreeCaraway>
+PS C:\Users\KoreeCaraway> # Parse JSON and search for likely ID fields
+PS C:\Users\KoreeCaraway> $j = $resp | ConvertFrom-Json
+PS C:\Users\KoreeCaraway>
+PS C:\Users\KoreeCaraway> # Flatten-ish view of keys and values
+PS C:\Users\KoreeCaraway> $j | ConvertTo-Json -Depth 6 | Out-String
+{
+    "STATUS":  "E",
+    "When":  1771539633,
+    "Code":  14,
+    "Msg":  "invalid cmd",
+    "Description":  ""
+}
+
+PS C:\Users\KoreeCaraway>
+PS C:\Users\KoreeCaraway> $client.Close()
+PS C:\Users\KoreeCaraway>
+
+Good catch — this firmware/API build on that miner doesn’t support stats (it’s returning Code: 14 / Msg: "invalid cmd"). So: you won’t reliably get MAC from the API on this unit unless there are other supported commands that include identity fields.
+
+But you can still solve dynamic IPs cleanly.
+
+1) Use arp to get the MAC (works 99% of the time)
+
+Since you can reach the miner IP, Windows will learn the MAC via ARP:
+
+arp -a | findstr 10.21.29.173
+
+
+That gives you a stable MAC → perfect “primary key” even with DHCP changes.
+
+Make it more reliable (force ARP refresh)
+
+If it doesn’t show up immediately, “touch” the miner first:
+
+Test-Connection 10.21.29.173 -Count 1 | Out-Null
+arp -a | findstr 10.21.29.173
+
+2) Find out what commands are supported (then see if any include SN/MAC)
+
+Try these one by one — many WhatsMiner API builds support a subset:
+
+# already works:
+{"command":"summary"}
+
+# try:
+{"command":"devs"}
+{"command":"pools"}
+{"command":"version"}
+{"command":"config"}
+{"command":"status"}
+{"command":"chipinfo"}
+{"command":"fans"}
+{"command":"temps"}
+{"command":"identify"}
+
+
+If any of those return JSON with SN, Serial, MAC, Hostname, etc., we can use that instead of ARP.
+
+Here’s a tiny helper you can paste to test quickly:
+
+function WM($cmd){
+  $ip="10.21.29.173"; $port=4028
+  $payload = ('{"command":"'+$cmd+'"}'+"`n")
+  $c=New-Object Net.Sockets.TcpClient; $c.Connect($ip,$port)
+  $s=$c.GetStream()
+  $b=[Text.Encoding]::ASCII.GetBytes($payload)
+  $s.Write($b,0,$b.Length)
+  Start-Sleep -Milliseconds 200
+  $buf=New-Object byte[] 262144
+  $r=$s.Read($buf,0,$buf.Length)
+  $c.Close()
+  ([Text.Encoding]::ASCII.GetString($buf,0,$r) | ConvertFrom-Json)
+}
+
+WM summary
+WM version
+WM devs
+WM pools
+
+3) Best approach for dynamic IPs (practical + accurate)
+
+Even if the API won’t give MAC/SN, you can still do discovery like this:
+
+Discovery loop
+
+scan subnet for port 4028 open
+
+call summary
+
+read ARP table to get MAC for that IP
+
+store mapping { MAC -> current IP + latest summary }
+
+That’s extremely reliable on a LAN.
+
+Answer to your exact question
+
+Do we get the MAC from the API port?
+
+On some firmware: yes (often via stats or version)
+
+On your current miner: stats is not supported, so MAC is best obtained via ARP, unless version/devs/config returns a serial/MAC.
+
+If you run WM version and paste the output, I’ll tell you whether it contains a serial/unique ID you can key off (sometimes it does even when stats doesn’t).
+
+PS C:\Users\KoreeCaraway>
+PS C:\Users\KoreeCaraway> $client.Close()
+PS C:\Users\KoreeCaraway> arp -a | findstr 10.21.29.173
+  10.21.29.173          ce-0c-1d-00-47-ed     dynamic
+PS C:\Users\KoreeCaraway>
+
+Yep — that’s your MAC, and it’s exactly what you want for dynamic IPs:
+
+MAC: ce-0c-1d-00-47-ed
+Current IP: 10.21.29.173
+
+What this means for your Replit build
+
+Use MAC as the stable “miner ID”, and treat IP as a changing attribute.
+
+Data model (simple)
+
+miner_id = MAC (primary key)
+
+last_ip
+
+last_seen
+
+summary fields (hashrate/temp/power/etc.)
+
+optional: site, rack, notes
+
+How discovery works (reliable)
+
+Scan subnet(s) for port 4028
+
+For each IP that responds:
+
+call summary
+
+read ARP to get MAC for that IP
+
+Save/update MAC → current IP + stats
+
+Important note about Replit
+
+Replit can’t see your private LAN, so you’d run a local agent (Windows box onsite) that:
+
+does the scan + ARP lookup + API calls
+
+posts results to your Replit app (HTTP POST with a token)
+
+Here’s a concrete thing you can build
+“Miner Locator + Health Dashboard”
+
+Agent (Windows PowerShell): auto-discovers miners even when IPs change
+
+Replit Web App: shows your fleet by MAC, lets you label them (Site/Container/Slot), shows health, alerts
+
+If you want, I’ll generate:
+
+a paste-and-run PowerShell agent that scans 10.21.29.0/24, polls summary, grabs MAC from ARP, and POSTs to…
+
+a Replit Node/Express project with /ingest + dashboard page + SQLite storage
+
+Tell me the subnet(s) you need to scan (example: 10.21.29.0/24, 10.21.30.0/24), and whether the agent should run every 30s or 60s.

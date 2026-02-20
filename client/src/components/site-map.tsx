@@ -291,7 +291,7 @@ function ContainerDetailView({
     slotMap.set(`${s.rack}-${s.slot}`, s);
   }
 
-  const cols = 3;
+  const cols = 4;
   const rows = Math.ceil(container.slotsPerRack / cols);
 
   return (

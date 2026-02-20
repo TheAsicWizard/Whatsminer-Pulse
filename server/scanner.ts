@@ -78,6 +78,8 @@ async function probeMiner(ip: string, port: number): Promise<ScanResult> {
     
     let hashrate = 0;
     let model = "WhatsMiner";
+    let mac: string | undefined;
+    let serial: string | undefined;
 
     let s: any = null;
     if (summary?.SUMMARY?.[0]) {
@@ -96,6 +98,8 @@ async function probeMiner(ip: string, port: number): Promise<ScanResult> {
         else if (fGhs > 100) model = "WhatsMiner M30";
         else model = `WhatsMiner (${fGhs} GH/s)`;
       }
+
+      if (s["MAC"]) mac = s["MAC"].toLowerCase();
     }
 
     try {
@@ -105,9 +109,24 @@ async function probeMiner(ip: string, port: number): Promise<ScanResult> {
           if (stat.Type) {
             model = `WhatsMiner ${stat.Type}`;
           }
+          if (stat["Mac"] && !mac) mac = stat["Mac"].toLowerCase();
+          if (stat["Serial Number"] && !serial) serial = stat["Serial Number"];
         }
       }
     } catch {
+    }
+
+    if (!mac) {
+      try {
+        const minerInfo = await queryCgminerApi(ip, port, "get_miner_info");
+        if (minerInfo?.Msg) {
+          const msg = minerInfo.Msg;
+          if (msg["Mac"]) mac = msg["Mac"].toLowerCase();
+          if (msg["MacAddr"]) mac = msg["MacAddr"].toLowerCase();
+          if (msg["SerialNo"]) serial = msg["SerialNo"];
+        }
+      } catch {
+      }
     }
 
     return {
@@ -116,6 +135,8 @@ async function probeMiner(ip: string, port: number): Promise<ScanResult> {
       found: true,
       model,
       hashrate,
+      mac,
+      serial,
     };
   } catch (err: any) {
     return {

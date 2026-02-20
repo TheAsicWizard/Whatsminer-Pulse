@@ -1,9 +1,12 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
-import { insertMinerSchema, insertAlertRuleSchema, insertScanConfigSchema, insertContainerSchema } from "@shared/schema";
+import { insertMinerSchema, insertAlertRuleSchema, insertScanConfigSchema, insertContainerSchema, type InsertMacLocationMapping } from "@shared/schema";
 import { ZodError } from "zod";
 import { scanIpRange, getScanProgress } from "./scanner";
+import multer from "multer";
+
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 50 * 1024 * 1024 } });
 
 function handleZodError(err: ZodError) {
   const messages = err.errors.map((e) => `${e.path.join(".")}: ${e.message}`);
@@ -195,8 +198,22 @@ export async function registerRoutes(
       res.json({ message: "Scan started", configId: config.id });
 
       scanIpRange(config.id, config.startIp, config.endIp, config.port).then(async (results) => {
+        let newMiners = 0;
+        let updatedMiners = 0;
         for (const result of results) {
-          const existing = await storage.getMinerByIp(result.ip, config.port);
+          let existing = await storage.getMinerByIp(result.ip, config.port);
+
+          if (result.mac && !existing) {
+            existing = await storage.getMinerByMac(result.mac) || undefined;
+            if (existing) {
+              await storage.updateMiner(existing.id, {
+                ipAddress: result.ip,
+                status: "online",
+              });
+              updatedMiners++;
+            }
+          }
+
           if (!existing) {
             await storage.createMiner({
               name: `${result.model || "WhatsMiner"} @ ${result.ip}`,
@@ -206,15 +223,33 @@ export async function registerRoutes(
               model: result.model || "WhatsMiner",
               status: "online",
               source: "scanned",
+              macAddress: result.mac || undefined,
+              serialNumber: result.serial || undefined,
             });
-          } else if (existing.status === "offline") {
-            await storage.updateMiner(existing.id, { status: "online" });
+            newMiners++;
+          } else {
+            const updates: any = {};
+            if (existing.status === "offline") updates.status = "online";
+            if (result.mac && !existing.macAddress) updates.macAddress = result.mac;
+            if (result.serial && !existing.serialNumber) updates.serialNumber = result.serial;
+            if (Object.keys(updates).length > 0) {
+              await storage.updateMiner(existing.id, updates);
+            }
           }
+        }
+
+        try {
+          const macAssigned = await storage.autoAssignByMac();
+          if (macAssigned > 0) {
+            console.log(`[scanner] Auto-assigned ${macAssigned} miners to slots by MAC address`);
+          }
+        } catch (e) {
+          console.error("[scanner] MAC auto-assign error:", e);
         }
 
         await storage.updateScanConfig(config.id, {
           lastScanAt: new Date(),
-          lastScanResult: `Found ${results.length} miners`,
+          lastScanResult: `Found ${results.length} miners (${newMiners} new, ${updatedMiners} IP-updated)`,
         });
       }).catch((err) => {
         storage.updateScanConfig(config.id, {
@@ -355,6 +390,150 @@ export async function registerRoutes(
     try {
       const count = await storage.autoAssignByIpRange();
       res.json({ assigned: count });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post("/api/containers/auto-assign-mac", async (_req, res) => {
+    try {
+      const count = await storage.autoAssignByMac();
+      res.json({ assigned: count });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.get("/api/mac-mappings", async (_req, res) => {
+    try {
+      const mappings = await storage.getMacLocationMappings();
+      res.json(mappings);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.get("/api/mac-mappings/stats", async (_req, res) => {
+    try {
+      const mappings = await storage.getMacLocationMappings();
+      const containers = new Set(mappings.map((m) => m.containerName));
+      res.json({
+        totalMappings: mappings.length,
+        containerCount: containers.size,
+        containers: Array.from(containers).sort(),
+      });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.delete("/api/mac-mappings", async (_req, res) => {
+    try {
+      await storage.clearMacLocationMappings();
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  function parseCSVLine(line: string): string[] {
+    const fields: string[] = [];
+    let inQuote = false;
+    let field = "";
+    for (const ch of line) {
+      if (ch === '"') { inQuote = !inQuote; continue; }
+      if (ch === ',' && !inQuote) { fields.push(field); field = ""; continue; }
+      field += ch;
+    }
+    fields.push(field.trim());
+    return fields;
+  }
+
+  app.post("/api/mac-mappings/import-foreman", upload.single("file"), async (req, res) => {
+    try {
+      if (!req.file) {
+        return res.status(400).json({ message: "No file uploaded" });
+      }
+
+      const content = req.file.buffer.toString("utf-8");
+      const lines = content.split("\n").filter((l) => l.trim());
+      if (lines.length < 2) {
+        return res.status(400).json({ message: "CSV file is empty or has no data rows" });
+      }
+
+      const header = parseCSVLine(lines[0]);
+      const macIdx = header.indexOf("miner_mac");
+      const rackIdx = header.indexOf("miner_rack");
+      const rowIdx = header.indexOf("miner_row");
+      const indexIdx = header.indexOf("miner_index");
+      const typeIdx = header.indexOf("miner_type");
+      const serialIdx = header.indexOf("miner_serial");
+      const ipIdx = header.indexOf("miner_ip");
+
+      if (macIdx === -1 || rackIdx === -1 || rowIdx === -1 || indexIdx === -1) {
+        return res.status(400).json({
+          message: "CSV must have columns: miner_mac, miner_rack, miner_row, miner_index",
+          foundColumns: header.filter((h) => ["miner_mac", "miner_rack", "miner_row", "miner_index"].includes(h)),
+        });
+      }
+
+      await storage.clearMacLocationMappings();
+
+      const mappings: InsertMacLocationMapping[] = [];
+      let skipped = 0;
+
+      for (let i = 1; i < lines.length; i++) {
+        const fields = parseCSVLine(lines[i]);
+        const mac = fields[macIdx]?.trim().toLowerCase();
+        const rackStr = fields[rackIdx]?.trim();
+        const rowStr = fields[rowIdx]?.trim();
+        const colStr = fields[indexIdx]?.trim();
+        const ip = ipIdx !== -1 ? fields[ipIdx]?.trim() : "";
+
+        if (!mac || !rackStr || !rowStr || !colStr) {
+          skipped++;
+          continue;
+        }
+
+        const rackMatch = rackStr.match(/^(C\d+)-R0*(\d+)$/);
+        if (!rackMatch) {
+          skipped++;
+          continue;
+        }
+
+        const containerName = rackMatch[1];
+        const rack = parseInt(rackMatch[2]);
+        const row = parseInt(rowStr);
+        const col = parseInt(colStr);
+
+        if (isNaN(rack) || isNaN(row) || isNaN(col) || rack < 1 || row < 1 || col < 1) {
+          skipped++;
+          continue;
+        }
+
+        mappings.push({
+          macAddress: mac,
+          containerName,
+          rack,
+          row,
+          col,
+          minerType: typeIdx !== -1 ? fields[typeIdx]?.trim() : undefined,
+          serialNumber: serialIdx !== -1 ? fields[serialIdx]?.trim() : undefined,
+        });
+      }
+
+      const inserted = await storage.bulkInsertMacLocationMappings(mappings);
+
+      const containers = new Set(mappings.map((m) => m.containerName));
+
+      res.json({
+        success: true,
+        imported: inserted,
+        skipped,
+        totalRows: lines.length - 1,
+        containerCount: containers.size,
+        containers: Array.from(containers).sort(),
+      });
     } catch (err: any) {
       res.status(500).json({ message: err.message });
     }

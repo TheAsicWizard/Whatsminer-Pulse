@@ -104,6 +104,13 @@ export default function MinerDetail() {
               {miner.ipAddress}:{miner.port}
               {miner.location && ` / ${miner.location}`}
             </p>
+            {(miner.macAddress || miner.serialNumber) && (
+              <p className="text-[10px] text-muted-foreground font-mono">
+                {miner.macAddress && `MAC: ${miner.macAddress}`}
+                {miner.macAddress && miner.serialNumber && " / "}
+                {miner.serialNumber && `S/N: ${miner.serialNumber}`}
+              </p>
+            )}
           </div>
         </div>
         <Badge variant="outline" className="ml-auto no-default-active-elevate">

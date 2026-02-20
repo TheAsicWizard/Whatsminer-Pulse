@@ -20,7 +20,7 @@ Real-time WhatsMiner mining fleet monitoring dashboard with health alerts, perfo
 - `server/scanner.ts` - Network scanner: IP range scanning, CGMiner API probe, real miner telemetry polling
 - `server/poller.ts` - Real miner poller: polls miners with source="scanned" every 30s
 - `server/seed.ts` - Database seed data (47 containers, 22K+ miners, alert rules)
-- `shared/schema.ts` - Drizzle schemas (miners, minerSnapshots, alertRules, alerts, scanConfigs, containers, slotAssignments)
+- `shared/schema.ts` - Drizzle schemas (miners, minerSnapshots, alertRules, alerts, scanConfigs, containers, slotAssignments, macLocationMappings)
 
 ## Key Features
 - Fleet overview dashboard with real-time stats and Site Map visualization
@@ -36,6 +36,12 @@ Real-time WhatsMiner mining fleet monitoring dashboard with health alerts, perfo
 - Alert rules engine with threshold monitoring
 - **Network Scanner**: IP range scanning to discover WhatsMiner devices via CGMiner API
 - **Real Miner Polling**: Discovered miners are automatically polled for live data
+- **Foreman CSV Import**: Upload Foreman CSV export to map MAC addresses to physical container/rack/slot positions
+  - Parses miner_mac, miner_rack (e.g. C260-R008), miner_row, miner_index columns
+  - Stores MAC-to-position mappings in mac_location_mappings table
+  - Auto-assigns miners to correct slots by matching MAC addresses after network scan
+  - Scanner captures MAC address from CGMiner API (summary, stats, get_miner_info commands)
+  - If a miner's IP changes (DHCP), rescan detects same MAC and updates the IP without losing position
 - Dark/light theme support
 - Simulated data for demo purposes alongside real miner support
 

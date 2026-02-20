@@ -37,6 +37,10 @@ import {
   Box,
   Edit2,
   RefreshCw,
+  Upload,
+  FileText,
+  CheckCircle2,
+  MapPin,
 } from "lucide-react";
 import type { Miner, AlertRule, ScanConfig, ScanProgress, Container, ContainerWithSlots, MinerWithLatest } from "@shared/schema";
 
@@ -52,11 +56,211 @@ export default function Settings() {
         </p>
       </div>
 
+      <ForemanImport />
       <ContainerManagement />
       <NetworkScanner />
       <MinerManagement />
       <AlertRuleManagement />
     </div>
+  );
+}
+
+function ForemanImport() {
+  const { toast } = useToast();
+  const [uploading, setUploading] = useState(false);
+  const [importResult, setImportResult] = useState<{
+    imported: number;
+    skipped: number;
+    totalRows: number;
+    containerCount: number;
+  } | null>(null);
+
+  const { data: mappingStats } = useQuery<{
+    totalMappings: number;
+    containerCount: number;
+    containers: string[];
+  }>({
+    queryKey: ["/api/mac-mappings/stats"],
+  });
+
+  const macAssignMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/containers/auto-assign-mac");
+      return res.json();
+    },
+    onSuccess: (data: { assigned: number }) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/containers"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/containers/summary"] });
+      queryClient.invalidateQueries({ predicate: (q) => (q.queryKey[0] as string)?.startsWith("/api/miners") });
+      toast({ title: `Assigned ${data.assigned} miners to their physical positions` });
+    },
+    onError: (err: Error) => {
+      toast({ title: "MAC assignment failed", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const clearMutation = useMutation({
+    mutationFn: async () => {
+      await apiRequest("DELETE", "/api/mac-mappings");
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/mac-mappings/stats"] });
+      setImportResult(null);
+      toast({ title: "MAC mappings cleared" });
+    },
+  });
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setUploading(true);
+    setImportResult(null);
+
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+
+      const res = await fetch("/api/mac-mappings/import-foreman", {
+        method: "POST",
+        body: formData,
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        toast({ title: "Import failed", description: data.message, variant: "destructive" });
+        return;
+      }
+
+      setImportResult(data);
+      queryClient.invalidateQueries({ queryKey: ["/api/mac-mappings/stats"] });
+      toast({ title: `Imported ${data.imported} MAC-to-position mappings` });
+    } catch (err: any) {
+      toast({ title: "Upload failed", description: err.message, variant: "destructive" });
+    } finally {
+      setUploading(false);
+      e.target.value = "";
+    }
+  };
+
+  const hasMappings = mappingStats && mappingStats.totalMappings > 0;
+
+  return (
+    <Card>
+      <CardHeader className="pb-3">
+        <div className="flex items-center justify-between gap-2">
+          <div>
+            <CardTitle className="text-sm font-medium flex items-center gap-2">
+              <MapPin className="w-4 h-4" />
+              Foreman Location Import
+            </CardTitle>
+            <CardDescription className="text-xs mt-1">
+              Import a Foreman CSV export to map MAC addresses to physical rack positions
+            </CardDescription>
+          </div>
+          <div className="flex items-center gap-2">
+            {hasMappings && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => macAssignMutation.mutate()}
+                disabled={macAssignMutation.isPending}
+                data-testid="button-mac-assign"
+              >
+                {macAssignMutation.isPending ? (
+                  <Loader2 className="w-3.5 h-3.5 animate-spin mr-1" />
+                ) : (
+                  <RefreshCw className="w-3.5 h-3.5 mr-1" />
+                )}
+                Assign by MAC
+              </Button>
+            )}
+            <label>
+              <input
+                type="file"
+                accept=".csv"
+                onChange={handleFileUpload}
+                className="hidden"
+                data-testid="input-foreman-csv"
+              />
+              <Button
+                size="sm"
+                asChild
+                disabled={uploading}
+              >
+                <span data-testid="button-upload-foreman">
+                  {uploading ? (
+                    <Loader2 className="w-4 h-4 animate-spin mr-1" />
+                  ) : (
+                    <Upload className="w-4 h-4 mr-1" />
+                  )}
+                  {uploading ? "Importing..." : "Upload CSV"}
+                </span>
+              </Button>
+            </label>
+          </div>
+        </div>
+      </CardHeader>
+      <CardContent>
+        {importResult && (
+          <div className="mb-4 p-3 rounded-md bg-green-500/10 border border-green-500/20 space-y-2" data-testid="import-result">
+            <div className="flex items-center gap-2 text-sm">
+              <CheckCircle2 className="w-4 h-4 text-green-500" />
+              <span className="font-medium text-green-600 dark:text-green-400">
+                Import complete
+              </span>
+            </div>
+            <div className="grid grid-cols-3 gap-2 text-xs text-muted-foreground">
+              <div>Imported: <span className="font-mono font-medium text-foreground">{importResult.imported.toLocaleString()}</span></div>
+              <div>Skipped: <span className="font-mono font-medium text-foreground">{importResult.skipped}</span></div>
+              <div>Containers: <span className="font-mono font-medium text-foreground">{importResult.containerCount}</span></div>
+            </div>
+          </div>
+        )}
+
+        {hasMappings ? (
+          <div className="space-y-3">
+            <div className="flex items-center justify-between p-3 rounded-md bg-muted/50">
+              <div className="flex items-center gap-3">
+                <FileText className="w-5 h-5 text-primary" />
+                <div>
+                  <p className="text-sm font-medium">
+                    {mappingStats.totalMappings.toLocaleString()} MAC-to-position mappings loaded
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    Across {mappingStats.containerCount} containers
+                  </p>
+                </div>
+              </div>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => clearMutation.mutate()}
+                disabled={clearMutation.isPending}
+                data-testid="button-clear-mappings"
+              >
+                <Trash2 className="w-4 h-4 text-muted-foreground" />
+              </Button>
+            </div>
+            <p className="text-[11px] text-muted-foreground">
+              After scanning your network, miners will be automatically placed in the correct rack position based on their MAC address.
+              You can also click "Assign by MAC" to manually trigger the assignment.
+            </p>
+          </div>
+        ) : (
+          <div className="text-center py-6 space-y-2">
+            <Upload className="w-8 h-8 mx-auto text-muted-foreground/50" />
+            <p className="text-sm text-muted-foreground">
+              No MAC mappings loaded. Upload a Foreman CSV export to map miners to their physical positions.
+            </p>
+            <p className="text-xs text-muted-foreground">
+              The CSV should contain: miner_mac, miner_rack (e.g. C260-R008), miner_row, miner_index
+            </p>
+          </div>
+        )}
+      </CardContent>
+    </Card>
   );
 }
 

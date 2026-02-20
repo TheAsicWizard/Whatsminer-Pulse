@@ -12,7 +12,21 @@ export const miners = pgTable("miners", {
   model: text("model").default("WhatsMiner"),
   status: text("status").notNull().default("offline"),
   source: text("source").notNull().default("manual"),
+  macAddress: text("mac_address"),
+  serialNumber: text("serial_number"),
   latestSnapshotId: varchar("latest_snapshot_id"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const macLocationMappings = pgTable("mac_location_mappings", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  macAddress: text("mac_address").notNull(),
+  containerName: text("container_name").notNull(),
+  rack: integer("rack").notNull(),
+  row: integer("row").notNull(),
+  col: integer("col").notNull(),
+  minerType: text("miner_type"),
+  serialNumber: text("serial_number"),
   createdAt: timestamp("created_at").defaultNow(),
 });
 
@@ -101,6 +115,7 @@ export const insertAlertSchema = createInsertSchema(alerts).omit({ id: true, cre
 export const insertScanConfigSchema = createInsertSchema(scanConfigs).omit({ id: true, createdAt: true, lastScanAt: true, lastScanResult: true });
 export const insertContainerSchema = createInsertSchema(containers).omit({ id: true, createdAt: true });
 export const insertSlotAssignmentSchema = createInsertSchema(slotAssignments).omit({ id: true, createdAt: true });
+export const insertMacLocationMappingSchema = createInsertSchema(macLocationMappings).omit({ id: true, createdAt: true });
 
 export type InsertMiner = z.infer<typeof insertMinerSchema>;
 export type Miner = typeof miners.$inferSelect;
@@ -116,6 +131,8 @@ export type InsertContainer = z.infer<typeof insertContainerSchema>;
 export type Container = typeof containers.$inferSelect;
 export type InsertSlotAssignment = z.infer<typeof insertSlotAssignmentSchema>;
 export type SlotAssignment = typeof slotAssignments.$inferSelect;
+export type InsertMacLocationMapping = z.infer<typeof insertMacLocationMappingSchema>;
+export type MacLocationMapping = typeof macLocationMappings.$inferSelect;
 
 export type ContainerWithSlots = Container & {
   slots: (SlotAssignment & { miner?: MinerWithLatest | null })[];
@@ -142,6 +159,8 @@ export type ScanResult = {
   found: boolean;
   model?: string;
   hashrate?: number;
+  mac?: string;
+  serial?: string;
   error?: string;
 };
 

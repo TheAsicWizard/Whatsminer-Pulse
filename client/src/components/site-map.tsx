@@ -390,6 +390,7 @@ function RackSlot({
         <div className="space-y-1">
           <p className="font-semibold text-xs">{miner.name}</p>
           <p className="text-[10px] text-muted-foreground font-mono">{miner.ipAddress}</p>
+          {miner.macAddress && <p className="text-[10px] text-muted-foreground font-mono">{miner.macAddress}</p>}
           <p className="text-[10px] text-muted-foreground">R{String(rackNum).padStart(2, "0")}-S{String(slotNum).padStart(2, "0")}</p>
           {s ? (
             <div className="grid grid-cols-2 gap-x-3 gap-y-0.5 pt-1 border-t">
@@ -441,6 +442,7 @@ function MinerBlock({ miner, compact }: { miner: MinerWithLatest; compact?: bool
         <div className="space-y-1">
           <p className="font-semibold text-xs">{miner.name}</p>
           <p className="text-[10px] text-muted-foreground font-mono">{miner.ipAddress}</p>
+          {miner.macAddress && <p className="text-[10px] text-muted-foreground font-mono">{miner.macAddress}</p>}
           {s ? (
             <div className="grid grid-cols-2 gap-x-3 gap-y-0.5 pt-1 border-t">
               <span className="text-[10px] text-muted-foreground">Hashrate</span>

@@ -7,8 +7,9 @@ import {
   type ScanConfig, type InsertScanConfig,
   type Container, type InsertContainer, type ContainerWithSlots,
   type SlotAssignment, type InsertSlotAssignment,
+  type MacLocationMapping, type InsertMacLocationMapping,
   miners, minerSnapshots, alertRules, alerts, scanConfigs,
-  containers, slotAssignments,
+  containers, slotAssignments, macLocationMappings,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc, and, sql, gte, lte, inArray } from "drizzle-orm";
@@ -64,6 +65,13 @@ export interface IStorage {
   unassignSlot(containerId: string, rack: number, slot: number): Promise<void>;
   swapMinerInSlot(containerId: string, rack: number, slot: number, newMinerId: string): Promise<SlotAssignment>;
   autoAssignByIpRange(): Promise<number>;
+
+  getMacLocationMappings(): Promise<MacLocationMapping[]>;
+  getMacLocationMapping(macAddress: string): Promise<MacLocationMapping | undefined>;
+  bulkInsertMacLocationMappings(mappings: InsertMacLocationMapping[]): Promise<number>;
+  clearMacLocationMappings(): Promise<void>;
+  getMinerByMac(macAddress: string): Promise<Miner | undefined>;
+  autoAssignByMac(): Promise<number>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -554,6 +562,67 @@ export class DatabaseStorage implements IStorage {
           rackIdx++;
         }
       }
+    }
+
+    return assigned;
+  }
+
+  async getMacLocationMappings(): Promise<MacLocationMapping[]> {
+    return db.select().from(macLocationMappings).orderBy(macLocationMappings.containerName, macLocationMappings.rack, macLocationMappings.row, macLocationMappings.col);
+  }
+
+  async getMacLocationMapping(macAddress: string): Promise<MacLocationMapping | undefined> {
+    const normalized = macAddress.toLowerCase().trim();
+    const [mapping] = await db.select().from(macLocationMappings).where(eq(macLocationMappings.macAddress, normalized));
+    return mapping;
+  }
+
+  async bulkInsertMacLocationMappings(mappings: InsertMacLocationMapping[]): Promise<number> {
+    if (mappings.length === 0) return 0;
+    const batchSize = 500;
+    let inserted = 0;
+    for (let i = 0; i < mappings.length; i += batchSize) {
+      const batch = mappings.slice(i, i + batchSize);
+      await db.insert(macLocationMappings).values(batch);
+      inserted += batch.length;
+    }
+    return inserted;
+  }
+
+  async clearMacLocationMappings(): Promise<void> {
+    await db.delete(macLocationMappings);
+  }
+
+  async getMinerByMac(macAddress: string): Promise<Miner | undefined> {
+    const normalized = macAddress.toLowerCase().trim();
+    const [miner] = await db.select().from(miners).where(eq(miners.macAddress, normalized));
+    return miner;
+  }
+
+  async autoAssignByMac(): Promise<number> {
+    const allMappings = await this.getMacLocationMappings();
+    if (allMappings.length === 0) return 0;
+
+    const allContainers = await this.getContainers();
+    const containerMap = new Map(allContainers.map((c) => [c.name, c]));
+
+    let assigned = 0;
+
+    for (const mapping of allMappings) {
+      const container = containerMap.get(mapping.containerName);
+      if (!container) continue;
+
+      const miner = await this.getMinerByMac(mapping.macAddress);
+      if (!miner) continue;
+
+      const slot = (mapping.row - 1) * 4 + mapping.col;
+
+      await this.assignMinerToSlot(container.id, mapping.rack, slot, miner.id);
+
+      const location = `${container.name}-R${String(mapping.rack).padStart(2, "0")}-${mapping.row}.${mapping.col}`;
+      await this.updateMiner(miner.id, { location });
+
+      assigned++;
     }
 
     return assigned;

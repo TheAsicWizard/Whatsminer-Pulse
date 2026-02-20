@@ -62,5 +62,6 @@ Real-time WhatsMiner mining fleet monitoring dashboard with health alerts, perfo
 - Miners have `source` field: "simulation" (demo), "manual" (user-added), "scanned" (discovered by network scan)
 - Network scanner uses TCP connections to CGMiner API (port 4028) with 3s timeout, 20 concurrent probes
 - Max scan range: 1024 IPs per scan config
-- Site layout: 47 air-cooled RK containers (C188-C284), each with 486 M60/M60S miners, 18 racks x 27 slots per container
+- Site layout: 47 air-cooled RK containers (C188-C284), each with ~486 M60/M60S miners, 14 racks x 40 slots per container (4 columns × 10 rows per rack)
+- Rack grid: 4 miners wide × 10 rows tall = 40 physical positions; not all positions have miners (empty shown as grey)
 - IP pattern: 4 sequential /24 subnets per container starting at 10.31.0.0

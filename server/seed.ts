@@ -53,8 +53,8 @@ const AIR_COOLED_CONTAINERS = [
   { name: "C284", model: "WhatsMiner M60 / M60S", capacity: 486, ipStart: "10.31.208.1", ipEnd: "10.31.211.255" },
 ];
 
-const RACKS_PER_CONTAINER = 18;
-const SLOTS_PER_RACK = 27;
+const RACKS_PER_CONTAINER = 14;
+const SLOTS_PER_RACK = 40;
 
 const MINER_PROFILES: Record<string, { hashGhs: number; power: number; factoryGhs: number; targetFreq: number }> = {
   "WhatsMiner M60S": { hashGhs: 170000, power: 3420, factoryGhs: 170000, targetFreq: 600 },

@@ -3,7 +3,9 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
 import { StatusIndicator, getMinerStatus } from "@/components/status-indicator";
+import { SiteMap } from "@/components/site-map";
 import { formatHashrate, formatPower, formatTemp, formatUptime } from "@/lib/format";
 import { Link } from "wouter";
 import { useState } from "react";
@@ -15,11 +17,14 @@ import {
   Search,
   Fan,
   Clock,
+  LayoutGrid,
+  List,
 } from "lucide-react";
 import type { MinerWithLatest } from "@shared/schema";
 
 export default function Miners() {
   const [search, setSearch] = useState("");
+  const [view, setView] = useState<"list" | "grid">("grid");
 
   const { data: miners, isLoading } = useQuery<MinerWithLatest[]>({
     queryKey: ["/api/miners"],
@@ -43,6 +48,24 @@ export default function Miners() {
           <p className="text-sm text-muted-foreground">
             {miners ? `${miners.length} devices registered` : "Loading..."}
           </p>
+        </div>
+        <div className="flex items-center gap-1 bg-muted rounded-md p-0.5">
+          <Button
+            variant={view === "grid" ? "secondary" : "ghost"}
+            size="icon"
+            onClick={() => setView("grid")}
+            data-testid="button-view-grid"
+          >
+            <LayoutGrid className="w-4 h-4" />
+          </Button>
+          <Button
+            variant={view === "list" ? "secondary" : "ghost"}
+            size="icon"
+            onClick={() => setView("list")}
+            data-testid="button-view-list"
+          >
+            <List className="w-4 h-4" />
+          </Button>
         </div>
       </div>
 
@@ -68,11 +91,19 @@ export default function Miners() {
           ))}
         </div>
       ) : filtered && filtered.length > 0 ? (
-        <div className="space-y-2">
-          {filtered.map((miner) => (
-            <MinerRow key={miner.id} miner={miner} />
-          ))}
-        </div>
+        view === "grid" ? (
+          <Card>
+            <CardContent className="p-4">
+              <SiteMap miners={filtered} />
+            </CardContent>
+          </Card>
+        ) : (
+          <div className="space-y-2">
+            {filtered.map((miner) => (
+              <MinerRow key={miner.id} miner={miner} />
+            ))}
+          </div>
+        )
       ) : (
         <Card>
           <CardContent className="p-8 text-center">

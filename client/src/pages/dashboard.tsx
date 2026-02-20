@@ -2,8 +2,8 @@ import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { StatusIndicator, getMinerStatus } from "@/components/status-indicator";
-import { formatHashrate, formatPower, formatTemp, formatUptime, formatEfficiency } from "@/lib/format";
+import { formatHashrate, formatPower, formatTemp } from "@/lib/format";
+import { SiteMap } from "@/components/site-map";
 import { Link } from "wouter";
 import {
   Activity,
@@ -13,7 +13,7 @@ import {
   Server,
   AlertTriangle,
   TrendingUp,
-  Fan,
+  Map,
 } from "lucide-react";
 import {
   AreaChart,
@@ -170,96 +170,42 @@ export default function Dashboard() {
         </Card>
       )}
 
-      <div>
-        <div className="flex items-center justify-between gap-2 mb-3">
-          <h3 className="text-sm font-medium">Miner Fleet</h3>
-          <Link href="/miners" data-testid="link-view-all-miners">
-            <span className="text-xs text-primary cursor-pointer">View all</span>
-          </Link>
-        </div>
-
-        {minersLoading ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-            {[1, 2, 3].map((i) => (
-              <Card key={i}>
-                <CardContent className="p-4">
-                  <Skeleton className="h-24 w-full" />
-                </CardContent>
-              </Card>
-            ))}
-          </div>
-        ) : miners && miners.length > 0 ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-            {miners.map((miner) => (
-              <MinerCard key={miner.id} miner={miner} />
-            ))}
-          </div>
-        ) : (
-          <Card>
-            <CardContent className="p-8 text-center">
-              <Server className="w-10 h-10 mx-auto text-muted-foreground mb-3" />
-              <p className="text-sm text-muted-foreground">No miners configured yet</p>
-              <Link href="/settings">
-                <span className="text-xs text-primary cursor-pointer mt-1 inline-block">
-                  Add your first miner
-                </span>
+      {miners && miners.length > 0 && (
+        <Card>
+          <CardHeader className="pb-2">
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-sm font-medium flex items-center gap-2">
+                <Map className="w-4 h-4" />
+                Site Map
+              </CardTitle>
+              <Link href="/miners" data-testid="link-view-all-miners">
+                <span className="text-xs text-primary cursor-pointer">View details</span>
               </Link>
-            </CardContent>
-          </Card>
-        )}
-      </div>
-    </div>
-  );
-}
-
-function MinerCard({ miner }: { miner: MinerWithLatest }) {
-  const status = getMinerStatus(miner);
-  const s = miner.latest;
-  return (
-    <Link href={`/miners/${miner.id}`}>
-      <Card className="cursor-pointer hover-elevate transition-all" data-testid={`card-miner-${miner.id}`}>
-        <CardContent className="p-4 space-y-3">
-          <div className="flex items-center justify-between gap-2">
-            <div className="flex items-center gap-2 min-w-0">
-              <StatusIndicator status={status} size="sm" />
-              <span className="text-sm font-medium truncate">{miner.name}</span>
             </div>
-            <Badge variant="outline" className="text-[10px] shrink-0 no-default-active-elevate">
-              {miner.model || "WhatsMiner"}
-            </Badge>
-          </div>
-
-          {s ? (
-            <div className="grid grid-cols-2 gap-x-4 gap-y-1.5">
-              <MetricRow icon={<Cpu className="w-3 h-3" />} label="Hashrate" value={formatHashrate(s.hashrate ?? 0)} />
-              <MetricRow icon={<Thermometer className="w-3 h-3" />} label="Temp" value={formatTemp(s.temperature ?? 0)} />
-              <MetricRow icon={<Zap className="w-3 h-3" />} label="Power" value={formatPower(s.power ?? 0)} />
-              <MetricRow icon={<Fan className="w-3 h-3" />} label="Fan In" value={`${s.fanSpeedIn ?? 0} RPM`} />
-            </div>
-          ) : (
-            <p className="text-xs text-muted-foreground">No data available</p>
-          )}
-
-          <div className="flex items-center justify-between gap-2 pt-1 border-t">
-            <span className="text-[10px] text-muted-foreground font-mono">{miner.ipAddress}:{miner.port}</span>
-            {s && (
-              <span className="text-[10px] text-muted-foreground">
-                Up {formatUptime(s.elapsed ?? 0)}
-              </span>
+          </CardHeader>
+          <CardContent>
+            {minersLoading ? (
+              <Skeleton className="h-40 w-full" />
+            ) : (
+              <SiteMap miners={miners} />
             )}
-          </div>
-        </CardContent>
-      </Card>
-    </Link>
-  );
-}
+          </CardContent>
+        </Card>
+      )}
 
-function MetricRow({ icon, label, value }: { icon: React.ReactNode; label: string; value: string }) {
-  return (
-    <div className="flex items-center gap-1.5">
-      <span className="text-muted-foreground">{icon}</span>
-      <span className="text-[10px] text-muted-foreground">{label}</span>
-      <span className="text-xs font-mono font-medium ml-auto">{value}</span>
+      {!minersLoading && (!miners || miners.length === 0) && (
+        <Card>
+          <CardContent className="p-8 text-center">
+            <Server className="w-10 h-10 mx-auto text-muted-foreground mb-3" />
+            <p className="text-sm text-muted-foreground">No miners configured yet</p>
+            <Link href="/settings">
+              <span className="text-xs text-primary cursor-pointer mt-1 inline-block">
+                Add your first miner
+              </span>
+            </Link>
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 }

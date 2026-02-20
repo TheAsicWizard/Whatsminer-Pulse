@@ -12,7 +12,7 @@ Real-time WhatsMiner mining fleet monitoring dashboard with health alerts, perfo
 
 ## Project Structure
 - `client/src/pages/` - Dashboard, Miners, MinerDetail, Alerts, Settings pages
-- `client/src/components/` - AppSidebar, ThemeProvider, ThemeToggle, StatusIndicator, SiteMap
+- `client/src/components/` - AppSidebar, ThemeProvider, ThemeToggle, StatusIndicator, SiteMap, AssignMinerDialog
 - `client/src/lib/format.ts` - Utility formatters for hashrate, power, temperature, uptime
 - `server/db.ts` - Database connection
 - `server/storage.ts` - Data access layer (IStorage interface + DatabaseStorage)
@@ -20,11 +20,17 @@ Real-time WhatsMiner mining fleet monitoring dashboard with health alerts, perfo
 - `server/scanner.ts` - Network scanner: IP range scanning, CGMiner API probe, real miner telemetry polling
 - `server/poller.ts` - Real miner poller: polls miners with source="scanned" every 30s
 - `server/seed.ts` - Database seed data (8 miners, 24h history, alert rules, alerts)
-- `shared/schema.ts` - Drizzle schemas (miners, minerSnapshots, alertRules, alerts, scanConfigs)
+- `shared/schema.ts` - Drizzle schemas (miners, minerSnapshots, alertRules, alerts, scanConfigs, containers, slotAssignments)
 
 ## Key Features
 - Fleet overview dashboard with real-time stats and Site Map visualization
 - **Site Map**: Color-coded grid view of all miners (green=online, amber=warning, red=critical, gray=offline) with hover tooltips
+- **Container Management**: Hierarchical Container > Rack > Slot layout with collapsible container cards
+  - Site Builder in Settings for creating/editing containers with rack count, slots per rack, IP ranges
+  - Auto-assign miners to slots by IP range matching
+  - Interactive slot assignment: click empty slot to assign, replace/swap for RMAs
+  - Container-level summary stats (online count, hashrate, power, avg temp)
+  - Naming convention: C1-01-02 (Container-Rack-Slot)
 - Individual miner detail with hashrate/temp/power charts
 - Grid/List view toggle on Miners page
 - Alert rules engine with threshold monitoring

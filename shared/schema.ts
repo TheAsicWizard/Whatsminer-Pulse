@@ -74,11 +74,32 @@ export const scanConfigs = pgTable("scan_configs", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
+export const containers = pgTable("containers", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  name: text("name").notNull(),
+  rackCount: integer("rack_count").notNull().default(8),
+  slotsPerRack: integer("slots_per_rack").notNull().default(1),
+  ipRangeStart: text("ip_range_start"),
+  ipRangeEnd: text("ip_range_end"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const slotAssignments = pgTable("slot_assignments", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  containerId: varchar("container_id").notNull(),
+  rack: integer("rack").notNull(),
+  slot: integer("slot").notNull(),
+  minerId: varchar("miner_id"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
 export const insertMinerSchema = createInsertSchema(miners).omit({ id: true, createdAt: true });
 export const insertSnapshotSchema = createInsertSchema(minerSnapshots).omit({ id: true, createdAt: true });
 export const insertAlertRuleSchema = createInsertSchema(alertRules).omit({ id: true, createdAt: true });
 export const insertAlertSchema = createInsertSchema(alerts).omit({ id: true, createdAt: true });
 export const insertScanConfigSchema = createInsertSchema(scanConfigs).omit({ id: true, createdAt: true, lastScanAt: true, lastScanResult: true });
+export const insertContainerSchema = createInsertSchema(containers).omit({ id: true, createdAt: true });
+export const insertSlotAssignmentSchema = createInsertSchema(slotAssignments).omit({ id: true, createdAt: true });
 
 export type InsertMiner = z.infer<typeof insertMinerSchema>;
 export type Miner = typeof miners.$inferSelect;
@@ -90,6 +111,14 @@ export type InsertAlert = z.infer<typeof insertAlertSchema>;
 export type Alert = typeof alerts.$inferSelect;
 export type InsertScanConfig = z.infer<typeof insertScanConfigSchema>;
 export type ScanConfig = typeof scanConfigs.$inferSelect;
+export type InsertContainer = z.infer<typeof insertContainerSchema>;
+export type Container = typeof containers.$inferSelect;
+export type InsertSlotAssignment = z.infer<typeof insertSlotAssignmentSchema>;
+export type SlotAssignment = typeof slotAssignments.$inferSelect;
+
+export type ContainerWithSlots = Container & {
+  slots: (SlotAssignment & { miner?: MinerWithLatest | null })[];
+};
 
 export type MinerWithLatest = Miner & {
   latest?: MinerSnapshot | null;

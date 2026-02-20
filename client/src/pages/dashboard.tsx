@@ -1,10 +1,14 @@
-import { useQuery } from "@tanstack/react-query";
+import { useState } from "react";
+import { useQuery, useMutation } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { formatHashrate, formatPower, formatTemp } from "@/lib/format";
-import { SiteMap } from "@/components/site-map";
+import { SiteMap, ContainerSiteMap } from "@/components/site-map";
+import { AssignMinerDialog } from "@/components/assign-miner-dialog";
 import { Link } from "wouter";
+import { apiRequest, queryClient } from "@/lib/queryClient";
+import { useToast } from "@/hooks/use-toast";
 import {
   Activity,
   Cpu,
@@ -24,9 +28,30 @@ import {
   Tooltip,
   ResponsiveContainer,
 } from "recharts";
-import type { FleetStats, MinerWithLatest } from "@shared/schema";
+import type { FleetStats, MinerWithLatest, ContainerWithSlots } from "@shared/schema";
 
 export default function Dashboard() {
+  const { toast } = useToast();
+  const [assignDialog, setAssignDialog] = useState<{
+    open: boolean;
+    containerId: string;
+    rack: number;
+    slot: number;
+    mode: "assign" | "swap";
+    currentMinerId?: string;
+  }>({ open: false, containerId: "", rack: 0, slot: 0, mode: "assign" });
+
+  const unassignMutation = useMutation({
+    mutationFn: async ({ containerId, rack, slot }: { containerId: string; rack: number; slot: number }) => {
+      await apiRequest("POST", `/api/containers/${containerId}/unassign`, { rack, slot });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/containers"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/miners"] });
+      toast({ title: "Miner removed from slot" });
+    },
+  });
+
   const { data: stats, isLoading: statsLoading, error: statsError } = useQuery<FleetStats>({
     queryKey: ["/api/fleet/stats"],
     refetchInterval: 5000,
@@ -41,6 +66,17 @@ export default function Dashboard() {
     queryKey: ["/api/fleet/history"],
     refetchInterval: 10000,
   });
+
+  const { data: containerList } = useQuery<ContainerWithSlots[]>({
+    queryKey: ["/api/containers"],
+    refetchInterval: 5000,
+  });
+
+  const hasContainers = containerList && containerList.length > 0;
+  const assignedMinerIds = new Set(
+    containerList?.flatMap((c) => c.slots.filter((s) => s.minerId).map((s) => s.minerId!)) ?? []
+  );
+  const unassignedMiners = miners?.filter((m) => !assignedMinerIds.has(m.id)) ?? [];
 
   if (statsError || minersError) {
     return (
@@ -170,7 +206,7 @@ export default function Dashboard() {
         </Card>
       )}
 
-      {miners && miners.length > 0 && (
+      {(miners && miners.length > 0) && (
         <Card>
           <CardHeader className="pb-2">
             <div className="flex items-center justify-between">
@@ -186,6 +222,18 @@ export default function Dashboard() {
           <CardContent>
             {minersLoading ? (
               <Skeleton className="h-40 w-full" />
+            ) : hasContainers ? (
+              <ContainerSiteMap
+                containers={containerList}
+                unassignedMiners={unassignedMiners}
+                onAssignSlot={(cId, r, s) =>
+                  setAssignDialog({ open: true, containerId: cId, rack: r, slot: s, mode: "assign" })
+                }
+                onSwapSlot={(cId, r, s, minerId) =>
+                  setAssignDialog({ open: true, containerId: cId, rack: r, slot: s, mode: "swap", currentMinerId: minerId })
+                }
+                onUnassignSlot={(cId, r, s) => unassignMutation.mutate({ containerId: cId, rack: r, slot: s })}
+              />
             ) : (
               <SiteMap miners={miners} />
             )}
@@ -206,6 +254,16 @@ export default function Dashboard() {
           </CardContent>
         </Card>
       )}
+
+      <AssignMinerDialog
+        open={assignDialog.open}
+        onOpenChange={(o) => setAssignDialog((prev) => ({ ...prev, open: o }))}
+        containerId={assignDialog.containerId}
+        rack={assignDialog.rack}
+        slot={assignDialog.slot}
+        mode={assignDialog.mode}
+        currentMinerId={assignDialog.currentMinerId}
+      />
     </div>
   );
 }

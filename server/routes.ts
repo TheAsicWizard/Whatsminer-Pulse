@@ -1,7 +1,7 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
-import { insertMinerSchema, insertAlertRuleSchema, insertScanConfigSchema } from "@shared/schema";
+import { insertMinerSchema, insertAlertRuleSchema, insertScanConfigSchema, insertContainerSchema } from "@shared/schema";
 import { ZodError } from "zod";
 import { scanIpRange, getScanProgress } from "./scanner";
 
@@ -228,6 +228,109 @@ export async function registerRoutes(
         return res.json({ status: "idle", total: 0, scanned: 0, found: 0, results: [] });
       }
       res.json(progress);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.get("/api/containers", async (_req, res) => {
+    try {
+      const result = await storage.getContainersWithSlots();
+      res.json(result);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post("/api/containers", async (req, res) => {
+    try {
+      const parsed = insertContainerSchema.parse(req.body);
+      const container = await storage.createContainer(parsed);
+      res.status(201).json(container);
+    } catch (err: any) {
+      if (err instanceof ZodError) {
+        return res.status(400).json({ message: handleZodError(err) });
+      }
+      res.status(400).json({ message: err.message });
+    }
+  });
+
+  app.patch("/api/containers/:id", async (req, res) => {
+    try {
+      const container = await storage.updateContainer(req.params.id, req.body);
+      if (!container) return res.status(404).json({ message: "Container not found" });
+      res.json(container);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.delete("/api/containers/:id", async (req, res) => {
+    try {
+      await storage.deleteContainer(req.params.id);
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post("/api/containers/:id/assign", async (req, res) => {
+    try {
+      const { rack, slot, minerId } = req.body;
+      if (!rack || !slot || !minerId) {
+        return res.status(400).json({ message: "rack, slot, and minerId are required" });
+      }
+      const assignment = await storage.assignMinerToSlot(req.params.id, rack, slot, minerId);
+
+      const container = await storage.getContainer(req.params.id);
+      if (container) {
+        const location = `${container.name}-${String(rack).padStart(2, "0")}-${String(slot).padStart(2, "0")}`;
+        await storage.updateMiner(minerId, { location, name: location });
+      }
+
+      res.json(assignment);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post("/api/containers/:id/unassign", async (req, res) => {
+    try {
+      const { rack, slot } = req.body;
+      if (!rack || !slot) {
+        return res.status(400).json({ message: "rack and slot are required" });
+      }
+      await storage.unassignSlot(req.params.id, rack, slot);
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post("/api/containers/:id/swap", async (req, res) => {
+    try {
+      const { rack, slot, newMinerId } = req.body;
+      if (!rack || !slot || !newMinerId) {
+        return res.status(400).json({ message: "rack, slot, and newMinerId are required" });
+      }
+      const assignment = await storage.swapMinerInSlot(req.params.id, rack, slot, newMinerId);
+
+      const container = await storage.getContainer(req.params.id);
+      if (container) {
+        const location = `${container.name}-${String(rack).padStart(2, "0")}-${String(slot).padStart(2, "0")}`;
+        await storage.updateMiner(newMinerId, { location, name: location });
+      }
+
+      res.json(assignment);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post("/api/containers/auto-assign", async (_req, res) => {
+    try {
+      const count = await storage.autoAssignByIpRange();
+      res.json({ assigned: count });
     } catch (err: any) {
       res.status(500).json({ message: err.message });
     }

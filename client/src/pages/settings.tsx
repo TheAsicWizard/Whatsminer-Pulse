@@ -34,8 +34,11 @@ import {
   Wifi,
   WifiOff,
   Radio,
+  Box,
+  Edit2,
+  RefreshCw,
 } from "lucide-react";
-import type { Miner, AlertRule, ScanConfig, ScanProgress } from "@shared/schema";
+import type { Miner, AlertRule, ScanConfig, ScanProgress, Container, ContainerWithSlots, MinerWithLatest } from "@shared/schema";
 
 export default function Settings() {
   return (
@@ -49,6 +52,7 @@ export default function Settings() {
         </p>
       </div>
 
+      <ContainerManagement />
       <NetworkScanner />
       <MinerManagement />
       <AlertRuleManagement />
@@ -745,6 +749,279 @@ function AlertRuleManagement() {
           <p className="text-sm text-muted-foreground text-center py-4">
             No alert rules configured. Create rules to get notified about miner issues.
           </p>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+function ContainerManagement() {
+  const { toast } = useToast();
+  const [open, setOpen] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [name, setName] = useState("");
+  const [rackCount, setRackCount] = useState("8");
+  const [slotsPerRack, setSlotsPerRack] = useState("14");
+  const [ipRangeStart, setIpRangeStart] = useState("");
+  const [ipRangeEnd, setIpRangeEnd] = useState("");
+
+  const { data: containerList, isLoading } = useQuery<ContainerWithSlots[]>({
+    queryKey: ["/api/containers"],
+  });
+
+  const resetForm = () => {
+    setName("");
+    setRackCount("8");
+    setSlotsPerRack("14");
+    setIpRangeStart("");
+    setIpRangeEnd("");
+    setEditingId(null);
+  };
+
+  const addMutation = useMutation({
+    mutationFn: async () => {
+      const body = {
+        name,
+        rackCount: parseInt(rackCount),
+        slotsPerRack: parseInt(slotsPerRack),
+        ipRangeStart: ipRangeStart || null,
+        ipRangeEnd: ipRangeEnd || null,
+      };
+      if (editingId) {
+        await apiRequest("PATCH", `/api/containers/${editingId}`, body);
+      } else {
+        await apiRequest("POST", "/api/containers", body);
+      }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/containers"] });
+      setOpen(false);
+      resetForm();
+      toast({ title: editingId ? "Container updated" : "Container created" });
+    },
+    onError: (err: Error) => {
+      toast({ title: "Failed to save container", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: async (id: string) => {
+      await apiRequest("DELETE", `/api/containers/${id}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/containers"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/miners"] });
+      toast({ title: "Container removed" });
+    },
+  });
+
+  const autoAssignMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/containers/auto-assign");
+      return res.json();
+    },
+    onSuccess: (data: { assigned: number }) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/containers"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/miners"] });
+      toast({ title: `Auto-assigned ${data.assigned} miners to slots` });
+    },
+    onError: (err: Error) => {
+      toast({ title: "Auto-assign failed", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const startEdit = (container: Container) => {
+    setEditingId(container.id);
+    setName(container.name);
+    setRackCount(String(container.rackCount));
+    setSlotsPerRack(String(container.slotsPerRack));
+    setIpRangeStart(container.ipRangeStart || "");
+    setIpRangeEnd(container.ipRangeEnd || "");
+    setOpen(true);
+  };
+
+  return (
+    <Card>
+      <CardHeader className="pb-3">
+        <div className="flex items-center justify-between gap-2">
+          <div>
+            <CardTitle className="text-sm font-medium flex items-center gap-2">
+              <Box className="w-4 h-4" />
+              Site Builder
+            </CardTitle>
+            <CardDescription className="text-xs mt-1">
+              Configure containers with racks and slots for physical miner layout
+            </CardDescription>
+          </div>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => autoAssignMutation.mutate()}
+              disabled={autoAssignMutation.isPending || !containerList?.length}
+              data-testid="button-auto-assign"
+            >
+              {autoAssignMutation.isPending ? (
+                <Loader2 className="w-3.5 h-3.5 animate-spin mr-1" />
+              ) : (
+                <RefreshCw className="w-3.5 h-3.5 mr-1" />
+              )}
+              Auto-Assign
+            </Button>
+            <Dialog open={open} onOpenChange={(o) => { setOpen(o); if (!o) resetForm(); }}>
+              <DialogTrigger asChild>
+                <Button size="sm" data-testid="button-add-container">
+                  <Plus className="w-4 h-4 mr-1" />
+                  Add Container
+                </Button>
+              </DialogTrigger>
+              <DialogContent>
+                <DialogHeader>
+                  <DialogTitle>{editingId ? "Edit Container" : "Add Container"}</DialogTitle>
+                </DialogHeader>
+                <div className="space-y-4 pt-2">
+                  <div className="space-y-2">
+                    <Label htmlFor="container-name">Container Name</Label>
+                    <Input
+                      id="container-name"
+                      placeholder="e.g. C1"
+                      value={name}
+                      onChange={(e) => setName(e.target.value)}
+                      data-testid="input-container-name"
+                    />
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-2">
+                      <Label htmlFor="rack-count">Racks per Container</Label>
+                      <Input
+                        id="rack-count"
+                        type="number"
+                        min="1"
+                        max="50"
+                        value={rackCount}
+                        onChange={(e) => setRackCount(e.target.value)}
+                        data-testid="input-rack-count"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="slots-per-rack">Slots per Rack</Label>
+                      <Input
+                        id="slots-per-rack"
+                        type="number"
+                        min="1"
+                        max="50"
+                        value={slotsPerRack}
+                        onChange={(e) => setSlotsPerRack(e.target.value)}
+                        data-testid="input-slots-per-rack"
+                      />
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-2">
+                      <Label htmlFor="ip-range-start">IP Range Start (optional)</Label>
+                      <Input
+                        id="ip-range-start"
+                        placeholder="10.21.29.1"
+                        value={ipRangeStart}
+                        onChange={(e) => setIpRangeStart(e.target.value)}
+                        data-testid="input-container-ip-start"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="ip-range-end">IP Range End (optional)</Label>
+                      <Input
+                        id="ip-range-end"
+                        placeholder="10.21.29.254"
+                        value={ipRangeEnd}
+                        onChange={(e) => setIpRangeEnd(e.target.value)}
+                        data-testid="input-container-ip-end"
+                      />
+                    </div>
+                  </div>
+                  <p className="text-[11px] text-muted-foreground">
+                    IP range is used for auto-assigning miners to slots. Miners with IPs in this range will be automatically placed in available slots.
+                  </p>
+                  <Button
+                    className="w-full"
+                    onClick={() => addMutation.mutate()}
+                    disabled={!name || !rackCount || !slotsPerRack || addMutation.isPending}
+                    data-testid="button-submit-container"
+                  >
+                    {addMutation.isPending ? "Saving..." : editingId ? "Update Container" : "Add Container"}
+                  </Button>
+                </div>
+              </DialogContent>
+            </Dialog>
+          </div>
+        </div>
+      </CardHeader>
+      <CardContent>
+        {isLoading ? (
+          <div className="space-y-2">
+            {[1, 2].map((i) => (
+              <Skeleton key={i} className="h-14 w-full" />
+            ))}
+          </div>
+        ) : containerList && containerList.length > 0 ? (
+          <div className="space-y-2">
+            {containerList.map((container) => {
+              const filledSlots = container.slots.filter((s) => s.minerId).length;
+              const totalSlots = container.rackCount * container.slotsPerRack;
+              return (
+                <div
+                  key={container.id}
+                  className="flex items-center justify-between gap-3 p-3 rounded-md bg-muted/50"
+                  data-testid={`container-item-${container.id}`}
+                >
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2">
+                      <p className="text-sm font-medium">{container.name}</p>
+                      <Badge variant="outline" className="text-[10px] no-default-active-elevate">
+                        {container.rackCount} racks × {container.slotsPerRack} slots
+                      </Badge>
+                      <Badge variant="secondary" className="text-[10px] no-default-active-elevate">
+                        {filledSlots}/{totalSlots} assigned
+                      </Badge>
+                    </div>
+                    {container.ipRangeStart && container.ipRangeEnd && (
+                      <p className="text-xs text-muted-foreground font-mono mt-0.5">
+                        IP range: {container.ipRangeStart} — {container.ipRangeEnd}
+                      </p>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-1 shrink-0">
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => startEdit(container)}
+                      data-testid={`button-edit-container-${container.id}`}
+                    >
+                      <Edit2 className="w-4 h-4 text-muted-foreground" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => deleteMutation.mutate(container.id)}
+                      disabled={deleteMutation.isPending}
+                      data-testid={`button-delete-container-${container.id}`}
+                    >
+                      <Trash2 className="w-4 h-4 text-muted-foreground" />
+                    </Button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        ) : (
+          <div className="text-center py-6 space-y-2">
+            <Box className="w-8 h-8 mx-auto text-muted-foreground/50" />
+            <p className="text-sm text-muted-foreground">
+              No containers configured. Add a container to organize miners by physical location.
+            </p>
+            <p className="text-xs text-muted-foreground">
+              Each container has racks (rows) and slots (positions) — matching your physical layout.
+            </p>
+          </div>
         )}
       </CardContent>
     </Card>

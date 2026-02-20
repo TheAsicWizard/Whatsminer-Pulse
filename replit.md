@@ -12,7 +12,7 @@ Real-time WhatsMiner mining fleet monitoring dashboard with health alerts, perfo
 
 ## Project Structure
 - `client/src/pages/` - Dashboard, Miners, MinerDetail, Alerts, Settings pages
-- `client/src/components/` - AppSidebar, ThemeProvider, ThemeToggle, StatusIndicator
+- `client/src/components/` - AppSidebar, ThemeProvider, ThemeToggle, StatusIndicator, SiteMap
 - `client/src/lib/format.ts` - Utility formatters for hashrate, power, temperature, uptime
 - `server/db.ts` - Database connection
 - `server/storage.ts` - Data access layer (IStorage interface + DatabaseStorage)
@@ -23,8 +23,10 @@ Real-time WhatsMiner mining fleet monitoring dashboard with health alerts, perfo
 - `shared/schema.ts` - Drizzle schemas (miners, minerSnapshots, alertRules, alerts, scanConfigs)
 
 ## Key Features
-- Fleet overview dashboard with real-time stats
+- Fleet overview dashboard with real-time stats and Site Map visualization
+- **Site Map**: Color-coded grid view of all miners (green=online, amber=warning, red=critical, gray=offline) with hover tooltips
 - Individual miner detail with hashrate/temp/power charts
+- Grid/List view toggle on Miners page
 - Alert rules engine with threshold monitoring
 - **Network Scanner**: IP range scanning to discover WhatsMiner devices via CGMiner API
 - **Real Miner Polling**: Discovered miners are automatically polled for live data

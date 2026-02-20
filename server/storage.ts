@@ -12,7 +12,11 @@ import {
   containers, slotAssignments, macLocationMappings,
 } from "@shared/schema";
 import { db } from "./db";
-import { eq, desc, and, sql, gte, lte, inArray } from "drizzle-orm";
+import { eq, desc, and, sql, gte, lte, inArray, like } from "drizzle-orm";
+
+function normalizeMac(mac: string): string {
+  return mac.toLowerCase().replace(/[:\-.\s]/g, "").trim();
+}
 import { alias } from "drizzle-orm/pg-core";
 
 const latestSnap = alias(minerSnapshots, "latest_snap");
@@ -595,9 +599,11 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getMinerByMac(macAddress: string): Promise<Miner | undefined> {
-    const normalized = macAddress.toLowerCase().trim();
-    const [miner] = await db.select().from(miners).where(eq(miners.macAddress, normalized));
-    return miner;
+    const stripped = normalizeMac(macAddress);
+    const allMiners = await db.select().from(miners);
+    return allMiners.find(
+      (m) => m.macAddress && normalizeMac(m.macAddress) === stripped
+    );
   }
 
   async autoAssignByMac(): Promise<{ assigned: number; containersCreated: number }> {
@@ -632,14 +638,29 @@ export class DatabaseStorage implements IStorage {
       }
     }
 
+    const allMiners = await db.select().from(miners);
+    const minerByMac = new Map<string, Miner>();
+    for (const m of allMiners) {
+      if (m.macAddress) {
+        minerByMac.set(normalizeMac(m.macAddress), m);
+      }
+    }
+
+    console.log(`[autoAssignByMac] ${allMappings.length} mappings, ${minerByMac.size} miners with MAC addresses`);
+
     let assigned = 0;
+    let noMatch = 0;
 
     for (const mapping of allMappings) {
       const container = containerMap.get(mapping.containerName);
       if (!container) continue;
 
-      const miner = await this.getMinerByMac(mapping.macAddress);
-      if (!miner) continue;
+      const stripped = normalizeMac(mapping.macAddress);
+      const miner = minerByMac.get(stripped);
+      if (!miner) {
+        noMatch++;
+        continue;
+      }
 
       const slot = (mapping.row - 1) * 4 + mapping.col;
 
@@ -649,6 +670,10 @@ export class DatabaseStorage implements IStorage {
       await this.updateMiner(miner.id, { location });
 
       assigned++;
+    }
+
+    if (noMatch > 0) {
+      console.log(`[autoAssignByMac] ${noMatch} mappings had no matching miner (MAC not found in scanned miners)`);
     }
 
     return { assigned, containersCreated };

@@ -319,18 +319,12 @@ function ContainerDetailView({
                 <div className="p-1.5 flex-1">
                   <div className="grid gap-[3px]" style={{ gridTemplateColumns: `repeat(${cols}, 18px)` }}>
                     {Array.from({ length: rows * cols }, (_, idx) => {
-                      const row = Math.floor(idx / cols);
-                      const col = idx % cols;
-                      const slotNum = row * cols + col + 1;
-                      if (slotNum > container.slotsPerRack) return null;
-
-                      if (row === 0 && col === 0) {
-                        return <div key="indicator" style={{ width: "18px", height: "18px", backgroundColor: "#8a8a8a" }} />;
-                      }
+                      const slotNum = idx + 1;
+                      if (slotNum > container.slotsPerRack) return <div key={`empty-${idx}`} />;
 
                       const assignment = slotMap.get(`${rackNum}-${slotNum}`);
                       const miner = assignment?.miner;
-                      if (!miner) return null;
+                      if (!miner) return <div key={`vacant-${idx}`} style={{ width: "18px", height: "18px" }} />;
                       return (
                         <RackSlot
                           key={`${rackNum}-${slotNum}`}

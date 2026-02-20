@@ -173,6 +173,10 @@ export async function scanIpRange(
 
 let pollDebugCount = 0;
 
+export function resetPollDebug() {
+  pollDebugCount = 0;
+}
+
 export async function pollRealMiner(ip: string, port: number): Promise<{
   hashrate: number;
   temperature: number;
@@ -201,28 +205,35 @@ export async function pollRealMiner(ip: string, port: number): Promise<{
     const [summaryRes, statsRes] = await Promise.all([
       queryCgminerApi(ip, port, "summary"),
       queryCgminerApi(ip, port, "stats").catch((e) => {
-        if (shouldDebug) log(`Stats query failed for ${ip}: ${e.message}`, "poller-debug");
+        if (shouldDebug) log(`[poller-debug] Stats query failed for ${ip}: ${e.message}`, "poller-debug");
         return null;
       }),
     ]);
 
     if (shouldDebug) {
-      log(`Summary keys for ${ip}: ${summaryRes ? Object.keys(summaryRes).join(", ") : "null"}`, "poller-debug");
+      pollDebugCount++;
+      log(`[poller-debug] === RAW RESPONSE FOR ${ip} ===`, "poller-debug");
+      log(`[poller-debug] Summary raw: ${JSON.stringify(summaryRes).substring(0, 500)}`, "poller-debug");
+      log(`[poller-debug] Stats raw: ${JSON.stringify(statsRes).substring(0, 500)}`, "poller-debug");
+      if (summaryRes) {
+        log(`[poller-debug] Summary top-level keys: ${Object.keys(summaryRes).join(", ")}`, "poller-debug");
+      }
       if (summaryRes?.SUMMARY?.[0]) {
-        log(`Summary[0] keys: ${Object.keys(summaryRes.SUMMARY[0]).join(", ")}`, "poller-debug");
+        log(`[poller-debug] Summary[0] keys: ${Object.keys(summaryRes.SUMMARY[0]).join(", ")}`, "poller-debug");
+        log(`[poller-debug] Summary[0] values: ${JSON.stringify(summaryRes.SUMMARY[0]).substring(0, 500)}`, "poller-debug");
       }
       if (statsRes?.STATS) {
-        for (let i = 0; i < statsRes.STATS.length; i++) {
-          log(`STATS[${i}] keys: ${Object.keys(statsRes.STATS[i]).join(", ")}`, "poller-debug");
+        for (let i = 0; i < Math.min(statsRes.STATS.length, 3); i++) {
+          log(`[poller-debug] STATS[${i}] keys: ${Object.keys(statsRes.STATS[i]).join(", ")}`, "poller-debug");
+          log(`[poller-debug] STATS[${i}] values: ${JSON.stringify(statsRes.STATS[i]).substring(0, 500)}`, "poller-debug");
         }
       } else if (statsRes) {
-        log(`Stats response keys: ${Object.keys(statsRes).join(", ")}`, "poller-debug");
+        log(`[poller-debug] Stats top-level keys: ${Object.keys(statsRes).join(", ")}`, "poller-debug");
       }
-      pollDebugCount++;
     }
 
     if (!summaryRes?.SUMMARY?.[0]) {
-      if (shouldDebug) log(`No SUMMARY data for ${ip}, raw: ${JSON.stringify(summaryRes).substring(0, 300)}`, "poller-debug");
+      if (shouldDebug) log(`[poller-debug] No SUMMARY[0] found for ${ip}`, "poller-debug");
       return null;
     }
 

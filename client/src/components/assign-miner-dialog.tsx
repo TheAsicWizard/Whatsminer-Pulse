@@ -38,9 +38,10 @@ export function AssignMinerDialog({
   const { toast } = useToast();
   const [search, setSearch] = useState("");
 
-  const { data: miners } = useQuery<MinerWithLatest[]>({
-    queryKey: ["/api/miners"],
+  const { data: minersData } = useQuery<{ miners: MinerWithLatest[]; total: number }>({
+    queryKey: ["/api/miners?page=1&limit=200"],
   });
+  const miners = minersData?.miners;
 
   const assignMutation = useMutation({
     mutationFn: async (minerId: string) => {
@@ -54,7 +55,7 @@ export function AssignMinerDialog({
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/containers"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/miners"] });
+      queryClient.invalidateQueries({ predicate: (q) => (q.queryKey[0] as string)?.startsWith("/api/miners") });
       onOpenChange(false);
       toast({ title: mode === "swap" ? "Miner replaced" : "Miner assigned" });
     },

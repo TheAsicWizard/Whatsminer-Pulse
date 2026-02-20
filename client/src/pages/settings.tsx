@@ -83,7 +83,7 @@ function NetworkScanner() {
     if (scanProgress?.status === "completed" || scanProgress?.status === "error") {
       if (scanProgress.status === "completed") {
         toast({ title: `Scan complete`, description: `Found ${scanProgress.found} miners` });
-        queryClient.invalidateQueries({ queryKey: ["/api/miners"] });
+        queryClient.invalidateQueries({ predicate: (q) => (q.queryKey[0] as string)?.startsWith("/api/miners") });
         queryClient.invalidateQueries({ queryKey: ["/api/fleet/stats"] });
         queryClient.invalidateQueries({ queryKey: ["/api/scan-configs"] });
       }
@@ -345,9 +345,10 @@ function MinerManagement() {
   const [location, setLocation] = useState("");
   const [model, setModel] = useState("WhatsMiner");
 
-  const { data: miners, isLoading } = useQuery<Miner[]>({
-    queryKey: ["/api/miners"],
+  const { data: minersData, isLoading } = useQuery<{ miners: Miner[]; total: number }>({
+    queryKey: ["/api/miners?page=1&limit=200"],
   });
+  const miners = minersData?.miners;
 
   const addMutation = useMutation({
     mutationFn: async () => {
@@ -362,7 +363,7 @@ function MinerManagement() {
       });
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/miners"] });
+      queryClient.invalidateQueries({ predicate: (q) => (q.queryKey[0] as string)?.startsWith("/api/miners") });
       queryClient.invalidateQueries({ queryKey: ["/api/fleet/stats"] });
       setOpen(false);
       setName("");
@@ -382,7 +383,7 @@ function MinerManagement() {
       await apiRequest("DELETE", `/api/miners/${id}`);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/miners"] });
+      queryClient.invalidateQueries({ predicate: (q) => (q.queryKey[0] as string)?.startsWith("/api/miners") });
       queryClient.invalidateQueries({ queryKey: ["/api/fleet/stats"] });
       toast({ title: "Miner removed" });
     },
@@ -810,7 +811,7 @@ function ContainerManagement() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/containers"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/miners"] });
+      queryClient.invalidateQueries({ predicate: (q) => (q.queryKey[0] as string)?.startsWith("/api/miners") });
       toast({ title: "Container removed" });
     },
   });
@@ -822,7 +823,7 @@ function ContainerManagement() {
     },
     onSuccess: (data: { assigned: number }) => {
       queryClient.invalidateQueries({ queryKey: ["/api/containers"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/miners"] });
+      queryClient.invalidateQueries({ predicate: (q) => (q.queryKey[0] as string)?.startsWith("/api/miners") });
       toast({ title: `Auto-assigned ${data.assigned} miners to slots` });
     },
     onError: (err: Error) => {

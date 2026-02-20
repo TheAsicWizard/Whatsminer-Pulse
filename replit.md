@@ -6,7 +6,7 @@ Real-time WhatsMiner mining fleet monitoring dashboard with health alerts, perfo
 ## Architecture
 - **Frontend**: React + TypeScript + Vite, Shadcn UI, Recharts, Wouter routing, TanStack Query
 - **Backend**: Express.js, Drizzle ORM, PostgreSQL
-- **Simulation**: Server-side miner simulation generates realistic telemetry data every 30 seconds
+- **Simulation**: Server-side miner simulation generates realistic telemetry data every 60 seconds
 - **Scanner**: Network scanner discovers WhatsMiner devices via CGMiner TCP API (port 4028)
 - **Poller**: Real miner poller queries discovered miners for live telemetry every 30 seconds
 
@@ -19,7 +19,7 @@ Real-time WhatsMiner mining fleet monitoring dashboard with health alerts, perfo
 - `server/simulation.ts` - Simulated miner telemetry polling (source="simulation")
 - `server/scanner.ts` - Network scanner: IP range scanning, CGMiner API probe, real miner telemetry polling
 - `server/poller.ts` - Real miner poller: polls miners with source="scanned" every 30s
-- `server/seed.ts` - Database seed data (8 miners, 24h history, alert rules, alerts)
+- `server/seed.ts` - Database seed data (47 containers, 22K+ miners, alert rules)
 - `shared/schema.ts` - Drizzle schemas (miners, minerSnapshots, alertRules, alerts, scanConfigs, containers, slotAssignments)
 
 ## Key Features
@@ -30,14 +30,23 @@ Real-time WhatsMiner mining fleet monitoring dashboard with health alerts, perfo
   - Auto-assign miners to slots by IP range matching
   - Interactive slot assignment: click empty slot to assign, replace/swap for RMAs
   - Container-level summary stats (online count, hashrate, power, avg temp)
-  - Naming convention: C1-01-02 (Container-Rack-Slot)
+  - Naming convention: C188-01-02 (Container-Rack-Slot)
 - Individual miner detail with hashrate/temp/power charts
-- Grid/List view toggle on Miners page
+- Grid/List view toggle on Miners page with server-side pagination
 - Alert rules engine with threshold monitoring
 - **Network Scanner**: IP range scanning to discover WhatsMiner devices via CGMiner API
 - **Real Miner Polling**: Discovered miners are automatically polled for live data
 - Dark/light theme support
 - Simulated data for demo purposes alongside real miner support
+
+## Performance Optimizations
+- **latestSnapshotId**: Miners table has `latest_snapshot_id` column pointing to most recent snapshot, eliminating expensive `max(createdAt)` subqueries
+- **Database Indexes**: Comprehensive indexes on miner_snapshots (miner_id, created_at), alerts (miner_id, acknowledged), slot_assignments (container_id, miner_id), miners (status, source, latest_snapshot_id)
+- **Paginated API**: `/api/miners` returns `{ miners, total }` with pagination, search, and status filter support
+- **Container summaries**: Lightweight `/api/containers/summary` endpoint uses JOINs with latestSnapshotId for fast aggregate stats
+- **Batch snapshot inserts**: Simulation inserts snapshots in batches of 500
+- **Snapshot cleanup**: Old snapshots (>2 hours) auto-cleaned every 5 minutes, preserving latest per miner
+- **60s simulation interval**: Reduced from 30s to manage write pressure with 22K+ miners
 
 ## Running
 - `npm run dev` starts the Express server (port 5000) + Vite dev server
@@ -49,7 +58,9 @@ Real-time WhatsMiner mining fleet monitoring dashboard with health alerts, perfo
 - Dark-first theme with amber/orange accent (mining industry feel)
 - Font: Inter for UI, JetBrains Mono for monospace/data
 - Sidebar navigation with fleet status summary
-- 30-second polling interval for simulation and real miner snapshots
+- 60-second polling interval for simulation, 30s for real miner snapshots
 - Miners have `source` field: "simulation" (demo), "manual" (user-added), "scanned" (discovered by network scan)
 - Network scanner uses TCP connections to CGMiner API (port 4028) with 3s timeout, 20 concurrent probes
 - Max scan range: 1024 IPs per scan config
+- Site layout: 47 air-cooled RK containers (C188-C284), each with 486 M60/M60S miners, 18 racks x 27 slots per container
+- IP pattern: 4 sequential /24 subnets per container starting at 10.31.0.0

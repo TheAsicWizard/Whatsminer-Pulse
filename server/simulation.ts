@@ -1,6 +1,6 @@
 import { db } from "./db";
 import { miners, minerSnapshots, alerts, alertRules } from "@shared/schema";
-import { eq, and } from "drizzle-orm";
+import { eq, and, sql } from "drizzle-orm";
 import { log } from "./index";
 
 function jitter(base: number, pct: number): number {
@@ -21,7 +21,6 @@ function generateSnap(miner: { id: string; model: string | null; status: string 
   const profile = MINER_PROFILES[miner.model || ""] || MINER_PROFILES["WhatsMiner M60S"];
   const isWarning = miner.status === "warning";
   const isCritical = miner.status === "critical";
-  const isOnline = miner.status === "online";
 
   const baseTemp = isCritical ? jitter(92, 0.05) : isWarning ? jitter(78, 0.05) : jitter(62, 0.08);
   const hashrate = isCritical
@@ -74,48 +73,59 @@ async function simulateSnapshots() {
     for (let i = 0; i < activeMiners.length; i += batchSize) {
       const batch = activeMiners.slice(i, i + batchSize);
       const snaps = batch.map((m) => generateSnap(m));
-      await db.insert(minerSnapshots).values(snaps);
+      const inserted = await db.insert(minerSnapshots).values(snaps).returning({ id: minerSnapshots.id, minerId: minerSnapshots.minerId });
+
+      if (inserted.length > 0) {
+        const values = inserted.map((s) => sql`(${s.minerId}::varchar, ${s.id}::varchar)`);
+        await db.execute(sql`
+          UPDATE miners SET latest_snapshot_id = v.snap_id
+          FROM (VALUES ${sql.join(values, sql`, `)}) AS v(miner_id, snap_id)
+          WHERE miners.id = v.miner_id
+        `);
+      }
     }
 
     const rules = await db.select().from(alertRules).where(eq(alertRules.enabled, true));
-    const problemMiners = activeMiners.filter(
-      (m) => m.status === "critical" || m.status === "warning"
-    );
+    if (rules.length > 0) {
+      const problemMiners = activeMiners.filter(
+        (m) => m.status === "critical" || m.status === "warning"
+      );
 
-    for (const miner of problemMiners) {
-      const snap = generateSnap(miner);
-      for (const rule of rules) {
-        const metricValue = (snap as any)[rule.metric];
-        if (metricValue === undefined) continue;
+      for (const miner of problemMiners) {
+        const snap = generateSnap(miner);
+        for (const rule of rules) {
+          const metricValue = (snap as any)[rule.metric];
+          if (metricValue === undefined) continue;
 
-        let triggered = false;
-        switch (rule.operator) {
-          case ">": triggered = metricValue > rule.threshold; break;
-          case "<": triggered = metricValue < rule.threshold; break;
-          case ">=": triggered = metricValue >= rule.threshold; break;
-          case "<=": triggered = metricValue <= rule.threshold; break;
-        }
+          let triggered = false;
+          switch (rule.operator) {
+            case ">": triggered = metricValue > rule.threshold; break;
+            case "<": triggered = metricValue < rule.threshold; break;
+            case ">=": triggered = metricValue >= rule.threshold; break;
+            case "<=": triggered = metricValue <= rule.threshold; break;
+          }
 
-        if (triggered) {
-          const existingAlerts = await db
-            .select()
-            .from(alerts)
-            .where(
-              and(
-                eq(alerts.minerId, miner.id),
-                eq(alerts.ruleId, rule.id),
-                eq(alerts.acknowledged, false)
-              )
-            );
+          if (triggered) {
+            const existingAlerts = await db
+              .select()
+              .from(alerts)
+              .where(
+                and(
+                  eq(alerts.minerId, miner.id),
+                  eq(alerts.ruleId, rule.id),
+                  eq(alerts.acknowledged, false)
+                )
+              );
 
-          if (existingAlerts.length === 0) {
-            await db.insert(alerts).values({
-              minerId: miner.id,
-              ruleId: rule.id,
-              severity: rule.severity,
-              message: `${miner.name}: ${rule.name} (${rule.metric} ${rule.operator} ${rule.threshold}, current: ${typeof metricValue === "number" ? metricValue.toFixed(1) : metricValue})`,
-              acknowledged: false,
-            });
+            if (existingAlerts.length === 0) {
+              await db.insert(alerts).values({
+                minerId: miner.id,
+                ruleId: rule.id,
+                severity: rule.severity,
+                message: `${miner.name}: ${rule.name} (${rule.metric} ${rule.operator} ${rule.threshold}, current: ${typeof metricValue === "number" ? metricValue.toFixed(1) : metricValue})`,
+                acknowledged: false,
+              });
+            }
           }
         }
       }
@@ -127,8 +137,22 @@ async function simulateSnapshots() {
   }
 }
 
+async function cleanOldSnapshots() {
+  try {
+    const result = await db.execute(sql`
+      DELETE FROM miner_snapshots 
+      WHERE created_at < now() - interval '2 hours'
+      AND id NOT IN (SELECT latest_snapshot_id FROM miners WHERE latest_snapshot_id IS NOT NULL)
+    `);
+    log(`Snapshot cleanup done`, "simulation");
+  } catch (err) {
+    console.error("Snapshot cleanup error:", err);
+  }
+}
+
 export function startSimulation() {
-  log("Starting miner simulation (30s interval)", "simulation");
-  setInterval(simulateSnapshots, 30000);
+  log("Starting miner simulation (60s interval)", "simulation");
+  setInterval(simulateSnapshots, 60000);
+  setInterval(cleanOldSnapshots, 300000);
   simulateSnapshots();
 }

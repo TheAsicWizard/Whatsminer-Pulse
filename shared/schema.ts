@@ -12,6 +12,7 @@ export const miners = pgTable("miners", {
   model: text("model").default("WhatsMiner"),
   status: text("status").notNull().default("offline"),
   source: text("source").notNull().default("manual"),
+  latestSnapshotId: varchar("latest_snapshot_id"),
   createdAt: timestamp("created_at").defaultNow(),
 });
 
@@ -93,7 +94,7 @@ export const slotAssignments = pgTable("slot_assignments", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
-export const insertMinerSchema = createInsertSchema(miners).omit({ id: true, createdAt: true });
+export const insertMinerSchema = createInsertSchema(miners).omit({ id: true, createdAt: true, latestSnapshotId: true });
 export const insertSnapshotSchema = createInsertSchema(minerSnapshots).omit({ id: true, createdAt: true });
 export const insertAlertRuleSchema = createInsertSchema(alertRules).omit({ id: true, createdAt: true });
 export const insertAlertSchema = createInsertSchema(alerts).omit({ id: true, createdAt: true });

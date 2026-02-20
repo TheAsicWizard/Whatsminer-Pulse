@@ -15,10 +15,15 @@ export async function registerRoutes(
   app: Express
 ): Promise<Server> {
 
-  app.get("/api/miners", async (_req, res) => {
+  app.get("/api/miners", async (req, res) => {
     try {
-      const miners = await storage.getMinersWithLatest();
-      res.json(miners);
+      const page = parseInt(req.query.page as string) || 1;
+      const limit = Math.min(parseInt(req.query.limit as string) || 50, 200);
+      const search = req.query.search as string | undefined;
+      const status = req.query.status as string | undefined;
+      const offset = (page - 1) * limit;
+      const result = await storage.getMinersWithLatestPaginated(offset, limit, search, status);
+      res.json(result);
     } catch (err: any) {
       res.status(500).json({ message: err.message });
     }

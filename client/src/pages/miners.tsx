@@ -8,7 +8,7 @@ import { StatusIndicator, getMinerStatus } from "@/components/status-indicator";
 import { SiteMap } from "@/components/site-map";
 import { formatHashrate, formatPower, formatTemp, formatUptime } from "@/lib/format";
 import { Link } from "wouter";
-import { useState } from "react";
+import { useState, useDeferredValue } from "react";
 import {
   Cpu,
   Zap,
@@ -19,24 +19,31 @@ import {
   Clock,
   LayoutGrid,
   List,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react";
 import type { MinerWithLatest } from "@shared/schema";
+
+const PAGE_SIZE = 50;
 
 export default function Miners() {
   const [search, setSearch] = useState("");
   const [view, setView] = useState<"list" | "grid">("grid");
+  const [page, setPage] = useState(1);
+  const deferredSearch = useDeferredValue(search);
 
-  const { data: miners, isLoading } = useQuery<MinerWithLatest[]>({
-    queryKey: ["/api/miners"],
-    refetchInterval: 5000,
+  const queryParams = new URLSearchParams({ page: String(page), limit: String(PAGE_SIZE) });
+  if (deferredSearch) queryParams.set("search", deferredSearch);
+  const minersUrl = `/api/miners?${queryParams}`;
+
+  const { data, isLoading } = useQuery<{ miners: MinerWithLatest[]; total: number }>({
+    queryKey: [minersUrl],
+    refetchInterval: 10000,
   });
 
-  const filtered = miners?.filter(
-    (m) =>
-      m.name.toLowerCase().includes(search.toLowerCase()) ||
-      m.ipAddress.includes(search) ||
-      (m.location && m.location.toLowerCase().includes(search.toLowerCase()))
-  );
+  const miners = data?.miners;
+  const total = data?.total ?? 0;
+  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
   return (
     <div className="p-4 md:p-6 space-y-4 overflow-auto h-full">
@@ -46,7 +53,7 @@ export default function Miners() {
             Miners
           </h2>
           <p className="text-sm text-muted-foreground">
-            {miners ? `${miners.length} devices registered` : "Loading..."}
+            {total > 0 ? `${total} devices registered` : "Loading..."}
           </p>
         </div>
         <div className="flex items-center gap-1 bg-muted rounded-md p-0.5">
@@ -74,7 +81,7 @@ export default function Miners() {
         <Input
           placeholder="Search by name, IP, or location..."
           value={search}
-          onChange={(e) => setSearch(e.target.value)}
+          onChange={(e) => { setSearch(e.target.value); setPage(1); }}
           className="pl-9"
           data-testid="input-search-miners"
         />
@@ -90,16 +97,16 @@ export default function Miners() {
             </Card>
           ))}
         </div>
-      ) : filtered && filtered.length > 0 ? (
+      ) : miners && miners.length > 0 ? (
         view === "grid" ? (
           <Card>
             <CardContent className="p-4">
-              <SiteMap miners={filtered} />
+              <SiteMap miners={miners} />
             </CardContent>
           </Card>
         ) : (
           <div className="space-y-2">
-            {filtered.map((miner) => (
+            {miners.map((miner) => (
               <MinerRow key={miner.id} miner={miner} />
             ))}
           </div>
@@ -113,6 +120,32 @@ export default function Miners() {
             </p>
           </CardContent>
         </Card>
+      )}
+
+      {totalPages > 1 && (
+        <div className="flex items-center justify-center gap-2 pt-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setPage((p) => Math.max(1, p - 1))}
+            disabled={page <= 1}
+            data-testid="button-prev-page"
+          >
+            <ChevronLeft className="w-4 h-4" />
+          </Button>
+          <span className="text-sm text-muted-foreground">
+            Page {page} of {totalPages}
+          </span>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+            disabled={page >= totalPages}
+            data-testid="button-next-page"
+          >
+            <ChevronRight className="w-4 h-4" />
+          </Button>
+        </div>
       )}
     </div>
   );

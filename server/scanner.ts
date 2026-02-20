@@ -79,14 +79,22 @@ async function probeMiner(ip: string, port: number): Promise<ScanResult> {
     let hashrate = 0;
     let model = "WhatsMiner";
 
+    let s: any = null;
     if (summary?.SUMMARY?.[0]) {
-      const s = summary.SUMMARY[0];
-      hashrate = s["MHS av"] || s["GHS av"] * 1000 || 0;
-      if (s["MHS av"]) {
-        hashrate = s["MHS av"] / 1000;
-      }
-      if (s["GHS av"]) {
-        hashrate = s["GHS av"];
+      s = summary.SUMMARY[0];
+    } else if (summary?.Msg && typeof summary.Msg === "object") {
+      s = summary.Msg;
+    }
+
+    if (s) {
+      if (s["GHS av"]) hashrate = s["GHS av"];
+      else if (s["MHS av"]) hashrate = s["MHS av"] / 1000;
+
+      if (s["Factory GHS"]) {
+        const fGhs = s["Factory GHS"];
+        if (fGhs > 200) model = "WhatsMiner M50";
+        else if (fGhs > 100) model = "WhatsMiner M30";
+        else model = `WhatsMiner (${fGhs} GH/s)`;
       }
     }
 
@@ -232,55 +240,62 @@ export async function pollRealMiner(ip: string, port: number): Promise<{
       }
     }
 
-    if (!summaryRes?.SUMMARY?.[0]) {
-      if (shouldDebug) log(`[poller-debug] No SUMMARY[0] found for ${ip}`, "poller-debug");
-      return null;
+    let s: any = null;
+    if (summaryRes?.SUMMARY?.[0]) {
+      s = summaryRes.SUMMARY[0];
+    } else if (summaryRes?.Msg && typeof summaryRes.Msg === "object") {
+      s = summaryRes.Msg;
     }
 
-    const s = summaryRes.SUMMARY[0];
+    if (!s) {
+      if (shouldDebug) log(`[poller-debug] No summary data found for ${ip}`, "poller-debug");
+      return null;
+    }
 
     let hashrateGhs = 0;
     if (s["GHS av"]) hashrateGhs = s["GHS av"];
     else if (s["MHS av"]) hashrateGhs = s["MHS av"] / 1000;
 
-    let temperature = 0;
-    let envTemp = 0;
-    let chipTempMin = 0;
-    let chipTempMax = 0;
-    let chipTempAvg = 0;
-    let fanSpeedIn = 0;
-    let fanSpeedOut = 0;
-    let power = 0;
-    let powerLimit = 0;
-    let freqAvg = 0;
-    let targetFreq = 0;
-    let factoryGhs = 0;
-    let powerMode = "Normal";
+    let temperature = s["Temperature"] || 0;
+    let envTemp = s["Env Temp"] || 0;
+    let chipTempMin = s["Chip Temp Min"] || 0;
+    let chipTempMax = s["Chip Temp Max"] || 0;
+    let chipTempAvg = s["Chip Temp Avg"] || 0;
+    let fanSpeedIn = s["Fan Speed In"] || 0;
+    let fanSpeedOut = s["Fan Speed Out"] || 0;
+    let power = s["Power"] || 0;
+    let powerLimit = s["Power Limit"] || 0;
+    let freqAvg = s["freq_avg"] || s["Freq Avg"] || 0;
+    let targetFreq = s["Target Freq"] || 0;
+    let factoryGhs = s["Factory GHS"] || 0;
+    let powerMode = s["Power Mode"] || "Normal";
 
     if (statsRes?.STATS) {
       for (const stat of statsRes.STATS) {
-        if (stat["Temperature"]) temperature = stat["Temperature"];
-        if (stat["Env Temp"]) envTemp = stat["Env Temp"];
-        if (stat["Chip Temp Min"]) chipTempMin = stat["Chip Temp Min"];
-        if (stat["Chip Temp Max"]) chipTempMax = stat["Chip Temp Max"];
-        if (stat["Chip Temp Avg"]) chipTempAvg = stat["Chip Temp Avg"];
-        if (stat["Fan Speed In"]) fanSpeedIn = stat["Fan Speed In"];
-        if (stat["Fan Speed Out"]) fanSpeedOut = stat["Fan Speed Out"];
-        if (stat["Power"]) power = stat["Power"];
-        if (stat["Power Limit"]) powerLimit = stat["Power Limit"];
-        if (stat["Freq Avg"]) freqAvg = stat["Freq Avg"];
-        if (stat["Target Freq"]) targetFreq = stat["Target Freq"];
-        if (stat["Factory GHS"]) factoryGhs = stat["Factory GHS"];
-        if (stat["Power Mode"]) powerMode = stat["Power Mode"];
+        if (stat["Temperature"] && !temperature) temperature = stat["Temperature"];
+        if (stat["Env Temp"] && !envTemp) envTemp = stat["Env Temp"];
+        if (stat["Chip Temp Min"] && !chipTempMin) chipTempMin = stat["Chip Temp Min"];
+        if (stat["Chip Temp Max"] && !chipTempMax) chipTempMax = stat["Chip Temp Max"];
+        if (stat["Chip Temp Avg"] && !chipTempAvg) chipTempAvg = stat["Chip Temp Avg"];
+        if (stat["Fan Speed In"] && !fanSpeedIn) fanSpeedIn = stat["Fan Speed In"];
+        if (stat["Fan Speed Out"] && !fanSpeedOut) fanSpeedOut = stat["Fan Speed Out"];
+        if (stat["Power"] && !power) power = stat["Power"];
+        if (stat["Power Limit"] && !powerLimit) powerLimit = stat["Power Limit"];
+        if (stat["Freq Avg"] && !freqAvg) freqAvg = stat["Freq Avg"];
+        if (stat["Target Freq"] && !targetFreq) targetFreq = stat["Target Freq"];
+        if (stat["Factory GHS"] && !factoryGhs) factoryGhs = stat["Factory GHS"];
+        if (stat["Power Mode"] && powerMode === "Normal") powerMode = stat["Power Mode"];
       }
     }
+
+    if (!temperature && envTemp) temperature = envTemp;
 
     const elapsed = s["Elapsed"] || 0;
     const accepted = s["Accepted"] || 0;
     const rejected = s["Rejected"] || 0;
+    const poolRejectedPct = s["Pool Rejected%"] || 0;
+    const poolStalePct = s["Pool Stale%"] || 0;
     const total = accepted + rejected;
-    const poolRejectedPct = total > 0 ? (rejected / total) * 100 : 0;
-    const poolStalePct = s["Stale"] ? (s["Stale"] / total) * 100 : 0;
     const efficiency = hashrateGhs > 0 ? power / (hashrateGhs / 1000) : 0;
 
     return {

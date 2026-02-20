@@ -324,7 +324,7 @@ function ContainerDetailView({
 
                       const assignment = slotMap.get(`${rackNum}-${slotNum}`);
                       const miner = assignment?.miner;
-                      if (!miner) return <div key={`vacant-${idx}`} style={{ width: "18px", height: "18px" }} />;
+                      if (!miner) return <div key={`vacant-${idx}`} style={{ width: "18px", height: "18px", backgroundColor: "#8a8a8a" }} />;
                       return (
                         <RackSlot
                           key={`${rackNum}-${slotNum}`}

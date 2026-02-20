@@ -291,7 +291,8 @@ function ContainerDetailView({
     slotMap.set(`${s.rack}-${s.slot}`, s);
   }
 
-  const slotsPerCol = Math.ceil(container.slotsPerRack / 2);
+  const cols = 3;
+  const rows = Math.ceil(container.slotsPerRack / cols);
 
   return (
     <CardContent className="pb-3">
@@ -309,35 +310,24 @@ function ContainerDetailView({
               <div
                 key={rackNum}
                 className="flex flex-col rounded"
-                style={{ backgroundColor: "#003300", minWidth: "50px" }}
+                style={{ backgroundColor: "#003300" }}
               >
                 <div className="flex items-center justify-between px-1.5 py-1 border-b" style={{ borderColor: "#006600" }}>
                   <span className="text-[9px] font-mono text-green-200 truncate">{rackLabel}</span>
                   <Settings className="w-2.5 h-2.5 text-green-400/60 shrink-0" />
                 </div>
-                <div className="flex gap-[4px] p-1.5 flex-1">
-                  <div className="flex flex-col gap-[3px]">
-                    <div style={{ width: "16px", height: "14px", backgroundColor: "#8a8a8a" }} />
-                    {Array.from({ length: slotsPerCol }, (_, sIdx) => {
-                      const slotNum = sIdx + 1;
-                      const assignment = slotMap.get(`${rackNum}-${slotNum}`);
-                      const miner = assignment?.miner;
-                      if (!miner) return null;
-                      return (
-                        <RackSlot
-                          key={`${rackNum}-${slotNum}`}
-                          miner={miner}
-                          containerId={containerId}
-                          rackNum={rackNum}
-                          slotNum={slotNum}
-                        />
-                      );
-                    })}
-                  </div>
-                  <div className="flex flex-col gap-[3px]">
-                    <div style={{ width: "16px", height: "14px", backgroundColor: "#8a8a8a" }} />
-                    {Array.from({ length: container.slotsPerRack - slotsPerCol }, (_, sIdx) => {
-                      const slotNum = slotsPerCol + sIdx + 1;
+                <div className="p-1.5 flex-1">
+                  <div className="grid gap-[3px]" style={{ gridTemplateColumns: `repeat(${cols}, 18px)` }}>
+                    {Array.from({ length: rows * cols }, (_, idx) => {
+                      const row = Math.floor(idx / cols);
+                      const col = idx % cols;
+                      const slotNum = row * cols + col + 1;
+                      if (slotNum > container.slotsPerRack) return null;
+
+                      if (row === 0 && col === 0) {
+                        return <div key="indicator" style={{ width: "18px", height: "18px", backgroundColor: "#8a8a8a" }} />;
+                      }
+
                       const assignment = slotMap.get(`${rackNum}-${slotNum}`);
                       const miner = assignment?.miner;
                       if (!miner) return null;
@@ -393,8 +383,8 @@ function RackSlot({
           <div
             className="cursor-pointer hover:brightness-125"
             style={{
-              width: "16px",
-              height: "14px",
+              width: "18px",
+              height: "18px",
               backgroundColor: bgColor,
               border: status === "critical" || status === "warning" ? `1px solid ${borderColor}` : "none",
             }}

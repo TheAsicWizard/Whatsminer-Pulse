@@ -71,7 +71,7 @@ export interface IStorage {
   bulkInsertMacLocationMappings(mappings: InsertMacLocationMapping[]): Promise<number>;
   clearMacLocationMappings(): Promise<void>;
   getMinerByMac(macAddress: string): Promise<Miner | undefined>;
-  autoAssignByMac(): Promise<number>;
+  autoAssignByMac(): Promise<{ assigned: number; containersCreated: number }>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -599,12 +599,37 @@ export class DatabaseStorage implements IStorage {
     return miner;
   }
 
-  async autoAssignByMac(): Promise<number> {
+  async autoAssignByMac(): Promise<{ assigned: number; containersCreated: number }> {
     const allMappings = await this.getMacLocationMappings();
-    if (allMappings.length === 0) return 0;
+    if (allMappings.length === 0) return { assigned: 0, containersCreated: 0 };
 
     const allContainers = await this.getContainers();
     const containerMap = new Map(allContainers.map((c) => [c.name, c]));
+
+    const containerStats = new Map<string, { maxRack: number; maxSlot: number }>();
+    for (const m of allMappings) {
+      const slot = (m.row - 1) * 4 + m.col;
+      const existing = containerStats.get(m.containerName);
+      if (!existing) {
+        containerStats.set(m.containerName, { maxRack: m.rack, maxSlot: slot });
+      } else {
+        if (m.rack > existing.maxRack) existing.maxRack = m.rack;
+        if (slot > existing.maxSlot) existing.maxSlot = slot;
+      }
+    }
+
+    let containersCreated = 0;
+    for (const [name, stats] of containerStats) {
+      if (!containerMap.has(name)) {
+        const created = await this.createContainer({
+          name,
+          rackCount: stats.maxRack,
+          slotsPerRack: stats.maxSlot,
+        });
+        containerMap.set(name, created);
+        containersCreated++;
+      }
+    }
 
     let assigned = 0;
 
@@ -625,7 +650,7 @@ export class DatabaseStorage implements IStorage {
       assigned++;
     }
 
-    return assigned;
+    return { assigned, containersCreated };
   }
 }
 

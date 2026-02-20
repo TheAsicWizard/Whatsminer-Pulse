@@ -239,9 +239,12 @@ export async function registerRoutes(
         }
 
         try {
-          const macAssigned = await storage.autoAssignByMac();
-          if (macAssigned > 0) {
-            console.log(`[scanner] Auto-assigned ${macAssigned} miners to slots by MAC address`);
+          const macResult = await storage.autoAssignByMac();
+          if (macResult.containersCreated > 0) {
+            console.log(`[scanner] Created ${macResult.containersCreated} containers from MAC mappings`);
+          }
+          if (macResult.assigned > 0) {
+            console.log(`[scanner] Auto-assigned ${macResult.assigned} miners to slots by MAC address`);
           }
         } catch (e) {
           console.error("[scanner] MAC auto-assign error:", e);
@@ -397,8 +400,8 @@ export async function registerRoutes(
 
   app.post("/api/containers/auto-assign-mac", async (_req, res) => {
     try {
-      const count = await storage.autoAssignByMac();
-      res.json({ assigned: count });
+      const result = await storage.autoAssignByMac();
+      res.json(result);
     } catch (err: any) {
       res.status(500).json({ message: err.message });
     }

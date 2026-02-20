@@ -1,3 +1,4 @@
+import "dotenv/config";
 import express, { type Request, Response, NextFunction } from "express";
 import { registerRoutes } from "./routes";
 import { serveStatic } from "./static";
@@ -68,8 +69,13 @@ app.use((req, res, next) => {
     await import("./db");
     const { execSync } = await import("child_process");
     execSync("npx drizzle-kit push --force", { stdio: "inherit" });
-    await seedDatabase();
-    startSimulation();
+    const skipSeed = process.env.SKIP_SEED === "true";
+    if (skipSeed) {
+      log("SKIP_SEED=true — skipping demo data and simulation", "seed");
+    } else {
+      await seedDatabase();
+      startSimulation();
+    }
     startRealPoller();
   } catch (err) {
     console.error("Database setup error:", err);

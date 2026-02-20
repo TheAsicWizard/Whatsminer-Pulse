@@ -322,7 +322,8 @@ function ContainerDetailView({
                       const slotNum = sIdx + 1;
                       const assignment = slotMap.get(`${rackNum}-${slotNum}`);
                       const miner = assignment?.miner;
-                      return miner ? (
+                      if (!miner) return null;
+                      return (
                         <RackSlot
                           key={`${rackNum}-${slotNum}`}
                           miner={miner}
@@ -331,14 +332,6 @@ function ContainerDetailView({
                           slotNum={slotNum}
                           onSwap={onSwapSlot}
                           onRemove={onUnassignSlot}
-                        />
-                      ) : (
-                        <EmptyRackSlot
-                          key={`${rackNum}-${slotNum}`}
-                          containerId={containerId}
-                          rackNum={rackNum}
-                          slotNum={slotNum}
-                          onAssign={onAssignSlot}
                         />
                       );
                     })}
@@ -348,7 +341,8 @@ function ContainerDetailView({
                       const slotNum = slotsPerCol + sIdx + 1;
                       const assignment = slotMap.get(`${rackNum}-${slotNum}`);
                       const miner = assignment?.miner;
-                      return miner ? (
+                      if (!miner) return null;
+                      return (
                         <RackSlot
                           key={`${rackNum}-${slotNum}`}
                           miner={miner}
@@ -357,14 +351,6 @@ function ContainerDetailView({
                           slotNum={slotNum}
                           onSwap={onSwapSlot}
                           onRemove={onUnassignSlot}
-                        />
-                      ) : (
-                        <EmptyRackSlot
-                          key={`${rackNum}-${slotNum}`}
-                          containerId={containerId}
-                          rackNum={rackNum}
-                          slotNum={slotNum}
-                          onAssign={onAssignSlot}
                         />
                       );
                     })}
@@ -461,39 +447,6 @@ function RackSlot({
   );
 }
 
-function EmptyRackSlot({
-  containerId,
-  rackNum,
-  slotNum,
-  onAssign,
-}: {
-  containerId: string;
-  rackNum: number;
-  slotNum: number;
-  onAssign?: (containerId: string, rack: number, slot: number) => void;
-}) {
-  return (
-    <Tooltip>
-      <TooltipTrigger asChild>
-        <div
-          className="rounded-sm cursor-pointer transition-all hover:brightness-150"
-          style={{
-            width: "28px",
-            height: "18px",
-            backgroundColor: "#004400",
-            border: "1px dashed #006600",
-          }}
-          onClick={() => onAssign?.(containerId, rackNum, slotNum)}
-          data-testid={`rack-slot-empty-${rackNum}-${slotNum}`}
-        />
-      </TooltipTrigger>
-      <TooltipContent side="top">
-        <p className="text-xs">Empty slot R{String(rackNum).padStart(2, "0")}-S{String(slotNum).padStart(2, "0")}</p>
-        {onAssign && <p className="text-[10px] text-muted-foreground">Click to assign a miner</p>}
-      </TooltipContent>
-    </Tooltip>
-  );
-}
 
 function MinerBlock({ miner, compact }: { miner: MinerWithLatest; compact?: boolean }) {
   const status = getMinerStatus(miner);

@@ -4,7 +4,8 @@ import {
   type AlertRule, type InsertAlertRule,
   type Alert, type InsertAlert,
   type MinerWithLatest, type FleetStats,
-  miners, minerSnapshots, alertRules, alerts,
+  type ScanConfig, type InsertScanConfig,
+  miners, minerSnapshots, alertRules, alerts, scanConfigs,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc, and, sql } from "drizzle-orm";
@@ -12,6 +13,7 @@ import { eq, desc, and, sql } from "drizzle-orm";
 export interface IStorage {
   getMiners(): Promise<Miner[]>;
   getMiner(id: string): Promise<Miner | undefined>;
+  getMinerByIp(ip: string, port: number): Promise<Miner | undefined>;
   createMiner(miner: InsertMiner): Promise<Miner>;
   updateMiner(id: string, data: Partial<InsertMiner>): Promise<Miner | undefined>;
   deleteMiner(id: string): Promise<void>;
@@ -32,6 +34,12 @@ export interface IStorage {
   acknowledgeAlert(id: string): Promise<void>;
   acknowledgeAllAlerts(): Promise<void>;
 
+  getScanConfigs(): Promise<ScanConfig[]>;
+  getScanConfig(id: string): Promise<ScanConfig | undefined>;
+  createScanConfig(config: InsertScanConfig): Promise<ScanConfig>;
+  updateScanConfig(id: string, data: Partial<ScanConfig>): Promise<ScanConfig | undefined>;
+  deleteScanConfig(id: string): Promise<void>;
+
   getFleetStats(): Promise<FleetStats>;
   getFleetHistory(): Promise<Array<{ time: string; hashrate: number; power: number; temp: number }>>;
 }
@@ -43,6 +51,12 @@ export class DatabaseStorage implements IStorage {
 
   async getMiner(id: string): Promise<Miner | undefined> {
     const [miner] = await db.select().from(miners).where(eq(miners.id, id));
+    return miner;
+  }
+
+  async getMinerByIp(ip: string, port: number): Promise<Miner | undefined> {
+    const [miner] = await db.select().from(miners)
+      .where(and(eq(miners.ipAddress, ip), eq(miners.port, port)));
     return miner;
   }
 
@@ -227,6 +241,29 @@ export class DatabaseStorage implements IStorage {
         temp: data.count > 0 ? data.temp / data.count : 0,
       }))
       .reverse();
+  }
+
+  async getScanConfigs(): Promise<ScanConfig[]> {
+    return db.select().from(scanConfigs).orderBy(scanConfigs.name);
+  }
+
+  async getScanConfig(id: string): Promise<ScanConfig | undefined> {
+    const [config] = await db.select().from(scanConfigs).where(eq(scanConfigs.id, id));
+    return config;
+  }
+
+  async createScanConfig(config: InsertScanConfig): Promise<ScanConfig> {
+    const [created] = await db.insert(scanConfigs).values(config).returning();
+    return created;
+  }
+
+  async updateScanConfig(id: string, data: Partial<ScanConfig>): Promise<ScanConfig | undefined> {
+    const [updated] = await db.update(scanConfigs).set(data).where(eq(scanConfigs.id, id)).returning();
+    return updated;
+  }
+
+  async deleteScanConfig(id: string): Promise<void> {
+    await db.delete(scanConfigs).where(eq(scanConfigs.id, id));
   }
 }
 

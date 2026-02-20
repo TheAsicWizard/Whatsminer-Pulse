@@ -4,14 +4,14 @@ import { sql } from "drizzle-orm";
 import { log } from "./index";
 
 const MINER_SEED_DATA = [
-  { name: "Rack A - Unit 1", ipAddress: "10.21.29.173", port: 4028, location: "Building A", model: "WhatsMiner M50S", status: "online" },
-  { name: "Rack A - Unit 2", ipAddress: "10.21.29.174", port: 4028, location: "Building A", model: "WhatsMiner M50S", status: "online" },
-  { name: "Rack A - Unit 3", ipAddress: "10.21.29.175", port: 4028, location: "Building A", model: "WhatsMiner M50", status: "online" },
-  { name: "Rack B - Unit 1", ipAddress: "10.21.30.101", port: 4028, location: "Building B", model: "WhatsMiner M30S++", status: "online" },
-  { name: "Rack B - Unit 2", ipAddress: "10.21.30.102", port: 4028, location: "Building B", model: "WhatsMiner M30S++", status: "warning" },
-  { name: "Rack C - Unit 1", ipAddress: "10.21.31.50", port: 4028, location: "Building C", model: "WhatsMiner M50S+", status: "online" },
-  { name: "Rack C - Unit 2", ipAddress: "10.21.31.51", port: 4028, location: "Building C", model: "WhatsMiner M50S+", status: "critical" },
-  { name: "Rack D - Unit 1", ipAddress: "10.21.32.10", port: 4028, location: "Building D", model: "WhatsMiner M56S", status: "offline" },
+  { name: "Rack A - Unit 1", ipAddress: "10.21.29.173", port: 4028, location: "Building A", model: "WhatsMiner M50S", status: "online", source: "simulation" },
+  { name: "Rack A - Unit 2", ipAddress: "10.21.29.174", port: 4028, location: "Building A", model: "WhatsMiner M50S", status: "online", source: "simulation" },
+  { name: "Rack A - Unit 3", ipAddress: "10.21.29.175", port: 4028, location: "Building A", model: "WhatsMiner M50", status: "online", source: "simulation" },
+  { name: "Rack B - Unit 1", ipAddress: "10.21.30.101", port: 4028, location: "Building B", model: "WhatsMiner M30S++", status: "online", source: "simulation" },
+  { name: "Rack B - Unit 2", ipAddress: "10.21.30.102", port: 4028, location: "Building B", model: "WhatsMiner M30S++", status: "warning", source: "simulation" },
+  { name: "Rack C - Unit 1", ipAddress: "10.21.31.50", port: 4028, location: "Building C", model: "WhatsMiner M50S+", status: "online", source: "simulation" },
+  { name: "Rack C - Unit 2", ipAddress: "10.21.31.51", port: 4028, location: "Building C", model: "WhatsMiner M50S+", status: "critical", source: "simulation" },
+  { name: "Rack D - Unit 1", ipAddress: "10.21.32.10", port: 4028, location: "Building D", model: "WhatsMiner M56S", status: "offline", source: "simulation" },
 ];
 
 function jitter(base: number, pct: number): number {

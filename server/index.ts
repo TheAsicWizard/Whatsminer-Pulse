@@ -62,6 +62,7 @@ app.use((req, res, next) => {
 (async () => {
   const { seedDatabase } = await import("./seed");
   const { startSimulation } = await import("./simulation");
+  const { startRealPoller } = await import("./poller");
 
   try {
     await import("./db");
@@ -69,6 +70,7 @@ app.use((req, res, next) => {
     execSync("npx drizzle-kit push --force", { stdio: "inherit" });
     await seedDatabase();
     startSimulation();
+    startRealPoller();
   } catch (err) {
     console.error("Database setup error:", err);
   }

@@ -11,6 +11,7 @@ export const miners = pgTable("miners", {
   location: text("location").default(""),
   model: text("model").default("WhatsMiner"),
   status: text("status").notNull().default("offline"),
+  source: text("source").notNull().default("manual"),
   createdAt: timestamp("created_at").defaultNow(),
 });
 
@@ -61,10 +62,23 @@ export const alerts = pgTable("alerts", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
+export const scanConfigs = pgTable("scan_configs", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  name: text("name").notNull(),
+  startIp: text("start_ip").notNull(),
+  endIp: text("end_ip").notNull(),
+  port: integer("port").notNull().default(4028),
+  enabled: boolean("enabled").notNull().default(true),
+  lastScanAt: timestamp("last_scan_at"),
+  lastScanResult: text("last_scan_result"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
 export const insertMinerSchema = createInsertSchema(miners).omit({ id: true, createdAt: true });
 export const insertSnapshotSchema = createInsertSchema(minerSnapshots).omit({ id: true, createdAt: true });
 export const insertAlertRuleSchema = createInsertSchema(alertRules).omit({ id: true, createdAt: true });
 export const insertAlertSchema = createInsertSchema(alerts).omit({ id: true, createdAt: true });
+export const insertScanConfigSchema = createInsertSchema(scanConfigs).omit({ id: true, createdAt: true, lastScanAt: true, lastScanResult: true });
 
 export type InsertMiner = z.infer<typeof insertMinerSchema>;
 export type Miner = typeof miners.$inferSelect;
@@ -74,6 +88,8 @@ export type InsertAlertRule = z.infer<typeof insertAlertRuleSchema>;
 export type AlertRule = typeof alertRules.$inferSelect;
 export type InsertAlert = z.infer<typeof insertAlertSchema>;
 export type Alert = typeof alerts.$inferSelect;
+export type InsertScanConfig = z.infer<typeof insertScanConfigSchema>;
+export type ScanConfig = typeof scanConfigs.$inferSelect;
 
 export type MinerWithLatest = Miner & {
   latest?: MinerSnapshot | null;
@@ -88,4 +104,25 @@ export type FleetStats = {
   avgTemperature: number;
   avgEfficiency: number;
   activeAlerts: number;
+};
+
+export type ScanResult = {
+  ip: string;
+  port: number;
+  found: boolean;
+  model?: string;
+  hashrate?: number;
+  error?: string;
+};
+
+export type ScanProgress = {
+  configId: string;
+  status: "idle" | "scanning" | "completed" | "error";
+  total: number;
+  scanned: number;
+  found: number;
+  results: ScanResult[];
+  startedAt?: string;
+  completedAt?: string;
+  error?: string;
 };

@@ -1,8 +1,9 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
-import { insertMinerSchema, insertAlertRuleSchema } from "@shared/schema";
+import { insertMinerSchema, insertAlertRuleSchema, insertScanConfigSchema } from "@shared/schema";
 import { ZodError } from "zod";
+import { scanIpRange, getScanProgress } from "./scanner";
 
 function handleZodError(err: ZodError) {
   const messages = err.errors.map((e) => `${e.path.join(".")}: ${e.message}`);
@@ -145,6 +146,88 @@ export async function registerRoutes(
     try {
       await storage.acknowledgeAllAlerts();
       res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.get("/api/scan-configs", async (_req, res) => {
+    try {
+      const configs = await storage.getScanConfigs();
+      res.json(configs);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post("/api/scan-configs", async (req, res) => {
+    try {
+      const parsed = insertScanConfigSchema.parse(req.body);
+      const config = await storage.createScanConfig(parsed);
+      res.status(201).json(config);
+    } catch (err: any) {
+      if (err instanceof ZodError) {
+        return res.status(400).json({ message: handleZodError(err) });
+      }
+      res.status(400).json({ message: err.message });
+    }
+  });
+
+  app.delete("/api/scan-configs/:id", async (req, res) => {
+    try {
+      await storage.deleteScanConfig(req.params.id);
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post("/api/scan-configs/:id/scan", async (req, res) => {
+    try {
+      const config = await storage.getScanConfig(req.params.id);
+      if (!config) return res.status(404).json({ message: "Scan config not found" });
+
+      res.json({ message: "Scan started", configId: config.id });
+
+      scanIpRange(config.id, config.startIp, config.endIp, config.port).then(async (results) => {
+        for (const result of results) {
+          const existing = await storage.getMinerByIp(result.ip, config.port);
+          if (!existing) {
+            await storage.createMiner({
+              name: `${result.model || "WhatsMiner"} @ ${result.ip}`,
+              ipAddress: result.ip,
+              port: config.port,
+              location: config.name,
+              model: result.model || "WhatsMiner",
+              status: "online",
+              source: "scanned",
+            });
+          } else if (existing.status === "offline") {
+            await storage.updateMiner(existing.id, { status: "online" });
+          }
+        }
+
+        await storage.updateScanConfig(config.id, {
+          lastScanAt: new Date(),
+          lastScanResult: `Found ${results.length} miners`,
+        });
+      }).catch((err) => {
+        storage.updateScanConfig(config.id, {
+          lastScanResult: `Scan error: ${err.message}`,
+        });
+      });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.get("/api/scan-configs/:id/progress", async (req, res) => {
+    try {
+      const progress = getScanProgress(req.params.id);
+      if (!progress) {
+        return res.json({ status: "idle", total: 0, scanned: 0, found: 0, results: [] });
+      }
+      res.json(progress);
     } catch (err: any) {
       res.status(500).json({ message: err.message });
     }

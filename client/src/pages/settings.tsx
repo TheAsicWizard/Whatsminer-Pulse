@@ -1,12 +1,13 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { useState } from "react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { useState, useEffect } from "react";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Progress } from "@/components/ui/progress";
 import {
   Dialog,
   DialogContent,
@@ -28,9 +29,13 @@ import {
   Server,
   Trash2,
   Shield,
-  Settings as SettingsIcon,
+  Scan,
+  Loader2,
+  Wifi,
+  WifiOff,
+  Radio,
 } from "lucide-react";
-import type { Miner, AlertRule } from "@shared/schema";
+import type { Miner, AlertRule, ScanConfig, ScanProgress } from "@shared/schema";
 
 export default function Settings() {
   return (
@@ -40,13 +45,290 @@ export default function Settings() {
           Settings
         </h2>
         <p className="text-sm text-muted-foreground">
-          Manage miners and alert rules
+          Manage miners, network scanning, and alert rules
         </p>
       </div>
 
+      <NetworkScanner />
       <MinerManagement />
       <AlertRuleManagement />
     </div>
+  );
+}
+
+function NetworkScanner() {
+  const { toast } = useToast();
+  const [open, setOpen] = useState(false);
+  const [name, setName] = useState("");
+  const [startIp, setStartIp] = useState("");
+  const [endIp, setEndIp] = useState("");
+  const [port, setPort] = useState("4028");
+  const [scanningConfigId, setScanningConfigId] = useState<string | null>(null);
+
+  const { data: configs, isLoading } = useQuery<ScanConfig[]>({
+    queryKey: ["/api/scan-configs"],
+  });
+
+  const { data: scanProgress } = useQuery<ScanProgress>({
+    queryKey: ["/api/scan-configs", scanningConfigId, "progress"],
+    enabled: !!scanningConfigId,
+    refetchInterval: scanningConfigId ? 1000 : false,
+  });
+
+  useEffect(() => {
+    if (scanProgress?.status === "completed" || scanProgress?.status === "error") {
+      if (scanProgress.status === "completed") {
+        toast({ title: `Scan complete`, description: `Found ${scanProgress.found} miners` });
+        queryClient.invalidateQueries({ queryKey: ["/api/miners"] });
+        queryClient.invalidateQueries({ queryKey: ["/api/fleet/stats"] });
+        queryClient.invalidateQueries({ queryKey: ["/api/scan-configs"] });
+      }
+      setTimeout(() => setScanningConfigId(null), 3000);
+    }
+  }, [scanProgress?.status]);
+
+  const addMutation = useMutation({
+    mutationFn: async () => {
+      await apiRequest("POST", "/api/scan-configs", {
+        name,
+        startIp,
+        endIp,
+        port: parseInt(port),
+        enabled: true,
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/scan-configs"] });
+      setOpen(false);
+      setName("");
+      setStartIp("");
+      setEndIp("");
+      setPort("4028");
+      toast({ title: "IP range added" });
+    },
+    onError: (err: Error) => {
+      toast({ title: "Failed to add range", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: async (id: string) => {
+      await apiRequest("DELETE", `/api/scan-configs/${id}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/scan-configs"] });
+      toast({ title: "IP range removed" });
+    },
+  });
+
+  const scanMutation = useMutation({
+    mutationFn: async (id: string) => {
+      await apiRequest("POST", `/api/scan-configs/${id}/scan`);
+      return id;
+    },
+    onSuccess: (id: string) => {
+      setScanningConfigId(id);
+      toast({ title: "Scan started", description: "Scanning network for WhatsMiner devices..." });
+    },
+    onError: (err: Error) => {
+      toast({ title: "Scan failed", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const isScanning = scanningConfigId !== null && scanProgress?.status === "scanning";
+
+  return (
+    <Card>
+      <CardHeader className="pb-3">
+        <div className="flex items-center justify-between gap-2">
+          <div>
+            <CardTitle className="text-sm font-medium flex items-center gap-2">
+              <Radio className="w-4 h-4" />
+              Network Scanner
+            </CardTitle>
+            <CardDescription className="text-xs mt-1">
+              Scan IP ranges to discover WhatsMiner devices on your network
+            </CardDescription>
+          </div>
+          <Dialog open={open} onOpenChange={setOpen}>
+            <DialogTrigger asChild>
+              <Button size="sm" data-testid="button-add-scan-range">
+                <Plus className="w-4 h-4 mr-1" />
+                Add IP Range
+              </Button>
+            </DialogTrigger>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Add IP Range</DialogTitle>
+              </DialogHeader>
+              <div className="space-y-4 pt-2">
+                <div className="space-y-2">
+                  <Label htmlFor="range-name">Name</Label>
+                  <Input
+                    id="range-name"
+                    placeholder="e.g. Building A"
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    data-testid="input-range-name"
+                  />
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-2">
+                    <Label htmlFor="start-ip">Start IP</Label>
+                    <Input
+                      id="start-ip"
+                      placeholder="192.168.1.1"
+                      value={startIp}
+                      onChange={(e) => setStartIp(e.target.value)}
+                      data-testid="input-start-ip"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="end-ip">End IP</Label>
+                    <Input
+                      id="end-ip"
+                      placeholder="192.168.1.254"
+                      value={endIp}
+                      onChange={(e) => setEndIp(e.target.value)}
+                      data-testid="input-end-ip"
+                    />
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="scan-port">API Port</Label>
+                  <Input
+                    id="scan-port"
+                    placeholder="4028"
+                    value={port}
+                    onChange={(e) => setPort(e.target.value)}
+                    data-testid="input-scan-port"
+                  />
+                  <p className="text-[11px] text-muted-foreground">
+                    WhatsMiner CGMiner API port (default: 4028)
+                  </p>
+                </div>
+                <Button
+                  className="w-full"
+                  onClick={() => addMutation.mutate()}
+                  disabled={!name || !startIp || !endIp || addMutation.isPending}
+                  data-testid="button-submit-range"
+                >
+                  {addMutation.isPending ? "Adding..." : "Add IP Range"}
+                </Button>
+              </div>
+            </DialogContent>
+          </Dialog>
+        </div>
+      </CardHeader>
+      <CardContent>
+        {isScanning && scanProgress && (
+          <div className="mb-4 p-3 rounded-md bg-primary/10 border border-primary/20 space-y-2" data-testid="scan-progress">
+            <div className="flex items-center gap-2 text-sm">
+              <Loader2 className="w-4 h-4 animate-spin text-primary" />
+              <span className="font-medium">
+                Scanning... {scanProgress.scanned}/{scanProgress.total} IPs
+              </span>
+              <Badge variant="outline" className="ml-auto text-[10px] no-default-active-elevate">
+                {scanProgress.found} found
+              </Badge>
+            </div>
+            <Progress
+              value={scanProgress.total > 0 ? (scanProgress.scanned / scanProgress.total) * 100 : 0}
+              className="h-1.5"
+            />
+          </div>
+        )}
+
+        {scanProgress?.status === "completed" && scanningConfigId && (
+          <div className="mb-4 p-3 rounded-md bg-green-500/10 border border-green-500/20 space-y-2" data-testid="scan-results">
+            <div className="flex items-center gap-2 text-sm">
+              <Wifi className="w-4 h-4 text-green-500" />
+              <span className="font-medium text-green-600 dark:text-green-400">
+                Scan complete: {scanProgress.found} miners found
+              </span>
+            </div>
+            {scanProgress.results.length > 0 && (
+              <div className="space-y-1 mt-2">
+                {scanProgress.results.map((r, i) => (
+                  <div key={i} className="text-xs text-muted-foreground font-mono flex items-center gap-2">
+                    <Wifi className="w-3 h-3 text-green-500" />
+                    {r.ip}:{r.port} - {r.model}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {isLoading ? (
+          <div className="space-y-2">
+            {[1, 2].map((i) => (
+              <Skeleton key={i} className="h-12 w-full" />
+            ))}
+          </div>
+        ) : configs && configs.length > 0 ? (
+          <div className="space-y-2">
+            {configs.map((config) => (
+              <div
+                key={config.id}
+                className="flex items-center justify-between gap-3 p-3 rounded-md bg-muted/50"
+                data-testid={`scan-config-${config.id}`}
+              >
+                <div className="min-w-0">
+                  <p className="text-sm font-medium truncate">{config.name}</p>
+                  <p className="text-xs text-muted-foreground font-mono">
+                    {config.startIp} — {config.endIp} : {config.port}
+                  </p>
+                  {config.lastScanResult && (
+                    <p className="text-[11px] text-muted-foreground mt-0.5">
+                      {config.lastScanResult}
+                      {config.lastScanAt && (
+                        <> · {new Date(config.lastScanAt).toLocaleString()}</>
+                      )}
+                    </p>
+                  )}
+                </div>
+                <div className="flex items-center gap-2 shrink-0">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => scanMutation.mutate(config.id)}
+                    disabled={isScanning || scanMutation.isPending}
+                    data-testid={`button-scan-${config.id}`}
+                  >
+                    {scanMutation.isPending && scanMutation.variables === config.id ? (
+                      <Loader2 className="w-3.5 h-3.5 animate-spin mr-1" />
+                    ) : (
+                      <Scan className="w-3.5 h-3.5 mr-1" />
+                    )}
+                    Scan
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => deleteMutation.mutate(config.id)}
+                    disabled={deleteMutation.isPending}
+                    data-testid={`button-delete-config-${config.id}`}
+                  >
+                    <Trash2 className="w-4 h-4 text-muted-foreground" />
+                  </Button>
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="text-center py-6 space-y-2">
+            <WifiOff className="w-8 h-8 mx-auto text-muted-foreground/50" />
+            <p className="text-sm text-muted-foreground">
+              No IP ranges configured. Add an IP range to scan for miners on your network.
+            </p>
+            <p className="text-xs text-muted-foreground">
+              Example: 192.168.1.1 — 192.168.1.254
+            </p>
+          </div>
+        )}
+      </CardContent>
+    </Card>
   );
 }
 
@@ -72,6 +354,7 @@ function MinerManagement() {
         location,
         model,
         status: "offline",
+        source: "manual",
       });
     },
     onSuccess: () => {
@@ -204,7 +487,14 @@ function MinerManagement() {
                 data-testid={`settings-miner-${miner.id}`}
               >
                 <div className="min-w-0">
-                  <p className="text-sm font-medium truncate">{miner.name}</p>
+                  <div className="flex items-center gap-2">
+                    <p className="text-sm font-medium truncate">{miner.name}</p>
+                    {miner.source === "scanned" && (
+                      <Badge variant="secondary" className="text-[9px] px-1.5 py-0 no-default-active-elevate">
+                        scanned
+                      </Badge>
+                    )}
+                  </div>
                   <p className="text-xs text-muted-foreground font-mono">
                     {miner.ipAddress}:{miner.port}
                     {miner.location && ` / ${miner.location}`}

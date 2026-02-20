@@ -1,13 +1,15 @@
 import { useState } from "react";
 import { Link } from "wouter";
+import { useQuery, useMutation } from "@tanstack/react-query";
 import { getMinerStatus } from "@/components/status-indicator";
 import { formatHashrate, formatTemp, formatPower } from "@/lib/format";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
 import { ChevronDown, ChevronRight, Box, Server, Cpu, Zap, Thermometer } from "lucide-react";
-import type { MinerWithLatest, ContainerWithSlots } from "@shared/schema";
+import type { MinerWithLatest, ContainerWithSlots, Container } from "@shared/schema";
 import { cn } from "@/lib/utils";
 
 const statusColors: Record<string, { bg: string; border: string; text: string }> = {
@@ -37,6 +39,17 @@ const emptySlotStyle = {
   bg: "bg-muted/50",
   border: "border-dashed border-muted-foreground/30",
   text: "text-muted-foreground/50",
+};
+
+export type ContainerSummary = Container & {
+  onlineCount: number;
+  warningCount: number;
+  criticalCount: number;
+  offlineCount: number;
+  totalAssigned: number;
+  totalHashrate: number;
+  totalPower: number;
+  avgTemp: number;
 };
 
 interface SiteMapProps {
@@ -78,16 +91,15 @@ export function SiteMap({ miners, columns }: SiteMapProps) {
   );
 }
 
-interface ContainerSiteMapProps {
-  containers: ContainerWithSlots[];
-  unassignedMiners?: MinerWithLatest[];
+interface ContainerSummaryMapProps {
+  containers: ContainerSummary[];
   onAssignSlot?: (containerId: string, rack: number, slot: number) => void;
   onSwapSlot?: (containerId: string, rack: number, slot: number, currentMinerId: string) => void;
   onUnassignSlot?: (containerId: string, rack: number, slot: number) => void;
 }
 
-export function ContainerSiteMap({ containers: containerList, unassignedMiners, onAssignSlot, onSwapSlot, onUnassignSlot }: ContainerSiteMapProps) {
-  if (!containerList || containerList.length === 0) {
+export function ContainerSummaryMap({ containers, onAssignSlot, onSwapSlot, onUnassignSlot }: ContainerSummaryMapProps) {
+  if (!containers || containers.length === 0) {
     return (
       <div className="text-center py-8 space-y-2">
         <Box className="w-10 h-10 mx-auto text-muted-foreground/50" />
@@ -97,28 +109,30 @@ export function ContainerSiteMap({ containers: containerList, unassignedMiners, 
     );
   }
 
-  const allMiners = containerList.flatMap((c) => c.slots.filter((s) => s.miner).map((s) => s.miner!));
-  const statusCounts = {
-    online: allMiners.filter((m) => getMinerStatus(m) === "online").length,
-    warning: allMiners.filter((m) => getMinerStatus(m) === "warning").length,
-    critical: allMiners.filter((m) => getMinerStatus(m) === "critical").length,
-    offline: allMiners.filter((m) => getMinerStatus(m) === "offline").length,
-    empty: containerList.reduce((sum, c) => sum + (c.rackCount * c.slotsPerRack) - c.slots.filter((s) => s.minerId).length, 0),
-  };
+  const totals = containers.reduce(
+    (acc, c) => ({
+      online: acc.online + c.onlineCount,
+      warning: acc.warning + c.warningCount,
+      critical: acc.critical + c.criticalCount,
+      offline: acc.offline + c.offlineCount,
+      empty: acc.empty + (c.rackCount * c.slotsPerRack - c.totalAssigned),
+    }),
+    { online: 0, warning: 0, critical: 0, offline: 0, empty: 0 }
+  );
 
   return (
     <div className="space-y-3">
       <div className="flex items-center gap-4 flex-wrap">
-        <LegendItem color="bg-emerald-500" label="Online" count={statusCounts.online} />
-        <LegendItem color="bg-amber-400" label="Warning" count={statusCounts.warning} />
-        <LegendItem color="bg-red-500" label="Critical" count={statusCounts.critical} />
-        <LegendItem color="bg-gray-400 dark:bg-gray-600" label="Offline" count={statusCounts.offline} />
-        <LegendItem color="bg-muted/50 border border-dashed border-muted-foreground/30" label="Empty" count={statusCounts.empty} />
+        <LegendItem color="bg-emerald-500" label="Online" count={totals.online} />
+        <LegendItem color="bg-amber-400" label="Warning" count={totals.warning} />
+        <LegendItem color="bg-red-500" label="Critical" count={totals.critical} />
+        <LegendItem color="bg-gray-400 dark:bg-gray-600" label="Offline" count={totals.offline} />
+        <LegendItem color="bg-muted/50 border border-dashed border-muted-foreground/30" label="Empty" count={totals.empty} />
       </div>
 
-      <div className="space-y-3">
-        {containerList.map((container) => (
-          <ContainerCard
+      <div className="space-y-2">
+        {containers.map((container) => (
+          <ContainerSummaryCard
             key={container.id}
             container={container}
             onAssignSlot={onAssignSlot}
@@ -127,56 +141,33 @@ export function ContainerSiteMap({ containers: containerList, unassignedMiners, 
           />
         ))}
       </div>
-
-      {unassignedMiners && unassignedMiners.length > 0 && (
-        <Card className="border-dashed">
-          <CardHeader className="pb-2 py-3">
-            <CardTitle className="text-xs font-medium text-muted-foreground flex items-center gap-2">
-              <Server className="w-3.5 h-3.5" />
-              Unassigned Miners ({unassignedMiners.length})
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="pb-3">
-            <div className="grid gap-1" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(80px, 1fr))" }}>
-              {unassignedMiners.map((miner) => (
-                <MinerBlock key={miner.id} miner={miner} compact />
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-      )}
     </div>
   );
 }
 
-function ContainerCard({
+function ContainerSummaryCard({
   container,
   onAssignSlot,
   onSwapSlot,
   onUnassignSlot,
 }: {
-  container: ContainerWithSlots;
+  container: ContainerSummary;
   onAssignSlot?: (containerId: string, rack: number, slot: number) => void;
   onSwapSlot?: (containerId: string, rack: number, slot: number, currentMinerId: string) => void;
   onUnassignSlot?: (containerId: string, rack: number, slot: number) => void;
 }) {
-  const [expanded, setExpanded] = useState(true);
+  const [expanded, setExpanded] = useState(false);
 
-  const slotMap = new Map<string, ContainerWithSlots["slots"][0]>();
-  for (const s of container.slots) {
-    slotMap.set(`${s.rack}-${s.slot}`, s);
-  }
-
-  const assignedMiners = container.slots.filter((s) => s.miner).map((s) => s.miner!);
-  const onlineCount = assignedMiners.filter((m) => getMinerStatus(m) === "online").length;
-  const totalHashrate = assignedMiners.reduce((sum, m) => sum + (m.latest?.hashrate ?? 0), 0);
-  const totalPower = assignedMiners.reduce((sum, m) => sum + (m.latest?.power ?? 0), 0);
   const totalSlots = container.rackCount * container.slotsPerRack;
-  const filledSlots = container.slots.filter((s) => s.minerId).length;
-
-  const avgTemp = assignedMiners.length > 0
-    ? assignedMiners.reduce((sum, m) => sum + (m.latest?.temperature ?? 0), 0) / assignedMiners.length
+  const healthPct = container.totalAssigned > 0
+    ? ((container.onlineCount / container.totalAssigned) * 100)
     : 0;
+
+  const healthColor = healthPct >= 95
+    ? "text-emerald-500"
+    : healthPct >= 80
+    ? "text-amber-400"
+    : "text-red-500";
 
   return (
     <Card data-testid={`container-card-${container.id}`}>
@@ -190,72 +181,163 @@ function ContainerCard({
             <Box className="w-4 h-4 text-primary" />
             <CardTitle className="text-sm font-semibold">{container.name}</CardTitle>
             <Badge variant="outline" className="text-[10px] no-default-active-elevate">
-              {filledSlots}/{totalSlots} slots
+              {container.totalAssigned}/{totalSlots} slots
             </Badge>
+            {container.criticalCount > 0 && (
+              <Badge variant="destructive" className="text-[10px]">
+                {container.criticalCount} critical
+              </Badge>
+            )}
           </div>
           <div className="flex items-center gap-4 text-xs">
-            <span className="flex items-center gap-1 text-muted-foreground">
+            <span className={cn("flex items-center gap-1 font-mono", healthColor)}>
               <Server className="w-3 h-3" />
-              <span className="font-mono">{onlineCount}/{assignedMiners.length}</span>
+              {container.onlineCount}/{container.totalAssigned}
             </span>
             <span className="flex items-center gap-1 text-muted-foreground">
               <Cpu className="w-3 h-3" />
-              <span className="font-mono">{formatHashrate(totalHashrate)}</span>
+              <span className="font-mono">{formatHashrate(container.totalHashrate)}</span>
             </span>
             <span className="flex items-center gap-1 text-muted-foreground">
               <Zap className="w-3 h-3" />
-              <span className="font-mono">{formatPower(totalPower)}</span>
+              <span className="font-mono">{formatPower(container.totalPower)}</span>
             </span>
             <span className="flex items-center gap-1 text-muted-foreground">
               <Thermometer className="w-3 h-3" />
-              <span className="font-mono">{formatTemp(avgTemp)}</span>
+              <span className="font-mono">{formatTemp(container.avgTemp)}</span>
             </span>
           </div>
         </div>
+
+        {!expanded && (
+          <div className="flex gap-[2px] mt-2 h-2">
+            {container.onlineCount > 0 && (
+              <div
+                className="bg-emerald-500 rounded-sm"
+                style={{ flex: container.onlineCount }}
+              />
+            )}
+            {container.warningCount > 0 && (
+              <div
+                className="bg-amber-400 rounded-sm"
+                style={{ flex: container.warningCount }}
+              />
+            )}
+            {container.criticalCount > 0 && (
+              <div
+                className="bg-red-500 rounded-sm"
+                style={{ flex: container.criticalCount }}
+              />
+            )}
+            {container.offlineCount > 0 && (
+              <div
+                className="bg-gray-500 rounded-sm"
+                style={{ flex: container.offlineCount }}
+              />
+            )}
+            {totalSlots - container.totalAssigned > 0 && (
+              <div
+                className="bg-muted/50 rounded-sm"
+                style={{ flex: totalSlots - container.totalAssigned }}
+              />
+            )}
+          </div>
+        )}
       </CardHeader>
 
       {expanded && (
-        <CardContent className="pb-3 space-y-1">
-          {Array.from({ length: container.rackCount }, (_, rIdx) => {
-            const rackNum = rIdx + 1;
-            return (
-              <div key={rackNum} className="flex items-center gap-2">
-                <span className="text-[10px] font-mono text-muted-foreground w-8 text-right shrink-0">
-                  R{String(rackNum).padStart(2, "0")}
-                </span>
-                <div className="flex gap-1 flex-1">
-                  {Array.from({ length: container.slotsPerRack }, (_, sIdx) => {
-                    const slotNum = sIdx + 1;
-                    const assignment = slotMap.get(`${rackNum}-${slotNum}`);
-                    const miner = assignment?.miner;
-
-                    if (miner) {
-                      return (
-                        <SlotBlock
-                          key={`${rackNum}-${slotNum}`}
-                          miner={miner}
-                          label={`${String(slotNum).padStart(2, "0")}`}
-                          onSwap={onSwapSlot ? () => onSwapSlot(container.id, rackNum, slotNum, miner.id) : undefined}
-                          onRemove={onUnassignSlot ? () => onUnassignSlot(container.id, rackNum, slotNum) : undefined}
-                        />
-                      );
-                    }
-
-                    return (
-                      <EmptySlot
-                        key={`${rackNum}-${slotNum}`}
-                        label={`${String(slotNum).padStart(2, "0")}`}
-                        onAssign={onAssignSlot ? () => onAssignSlot(container.id, rackNum, slotNum) : undefined}
-                      />
-                    );
-                  })}
-                </div>
-              </div>
-            );
-          })}
-        </CardContent>
+        <ContainerDetailView
+          containerId={container.id}
+          container={container}
+          onAssignSlot={onAssignSlot}
+          onSwapSlot={onSwapSlot}
+          onUnassignSlot={onUnassignSlot}
+        />
       )}
     </Card>
+  );
+}
+
+function ContainerDetailView({
+  containerId,
+  container,
+  onAssignSlot,
+  onSwapSlot,
+  onUnassignSlot,
+}: {
+  containerId: string;
+  container: ContainerSummary;
+  onAssignSlot?: (containerId: string, rack: number, slot: number) => void;
+  onSwapSlot?: (containerId: string, rack: number, slot: number, currentMinerId: string) => void;
+  onUnassignSlot?: (containerId: string, rack: number, slot: number) => void;
+}) {
+  const { data: detail, isLoading } = useQuery<ContainerWithSlots>({
+    queryKey: ["/api/containers", containerId, "detail"],
+    queryFn: async () => {
+      const res = await fetch(`/api/containers/${containerId}/detail`);
+      if (!res.ok) throw new Error("Failed to load container details");
+      return res.json();
+    },
+    refetchInterval: 10000,
+  });
+
+  if (isLoading || !detail) {
+    return (
+      <CardContent className="pb-3">
+        <div className="space-y-2">
+          {Array.from({ length: 3 }).map((_, i) => (
+            <Skeleton key={i} className="h-7 w-full" />
+          ))}
+        </div>
+      </CardContent>
+    );
+  }
+
+  const slotMap = new Map<string, ContainerWithSlots["slots"][0]>();
+  for (const s of detail.slots) {
+    slotMap.set(`${s.rack}-${s.slot}`, s);
+  }
+
+  return (
+    <CardContent className="pb-3 space-y-1">
+      {Array.from({ length: container.rackCount }, (_, rIdx) => {
+        const rackNum = rIdx + 1;
+        return (
+          <div key={rackNum} className="flex items-center gap-2">
+            <span className="text-[10px] font-mono text-muted-foreground w-8 text-right shrink-0">
+              R{String(rackNum).padStart(2, "0")}
+            </span>
+            <div className="flex gap-1 flex-1">
+              {Array.from({ length: container.slotsPerRack }, (_, sIdx) => {
+                const slotNum = sIdx + 1;
+                const assignment = slotMap.get(`${rackNum}-${slotNum}`);
+                const miner = assignment?.miner;
+
+                if (miner) {
+                  return (
+                    <SlotBlock
+                      key={`${rackNum}-${slotNum}`}
+                      miner={miner}
+                      label={`${String(slotNum).padStart(2, "0")}`}
+                      onSwap={onSwapSlot ? () => onSwapSlot(containerId, rackNum, slotNum, miner.id) : undefined}
+                      onRemove={onUnassignSlot ? () => onUnassignSlot(containerId, rackNum, slotNum) : undefined}
+                    />
+                  );
+                }
+
+                return (
+                  <EmptySlot
+                    key={`${rackNum}-${slotNum}`}
+                    label={`${String(slotNum).padStart(2, "0")}`}
+                    onAssign={onAssignSlot ? () => onAssignSlot(containerId, rackNum, slotNum) : undefined}
+                  />
+                );
+              })}
+            </div>
+          </div>
+        );
+      })}
+    </CardContent>
   );
 }
 
@@ -420,7 +502,7 @@ function LegendItem({ color, label, count }: { color: string; label: string; cou
     <div className="flex items-center gap-1.5">
       <span className={cn("w-3 h-3 rounded-sm", color)} />
       <span className="text-xs text-muted-foreground">
-        {label}: <span className="font-mono font-medium">{count}</span>
+        {label}: <span className="font-mono font-medium">{count.toLocaleString()}</span>
       </span>
     </div>
   );

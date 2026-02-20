@@ -52,6 +52,8 @@ export interface IStorage {
   updateContainer(id: string, data: Partial<InsertContainer>): Promise<Container | undefined>;
   deleteContainer(id: string): Promise<void>;
   getContainersWithSlots(): Promise<ContainerWithSlots[]>;
+  getContainerWithSlots(id: string): Promise<ContainerWithSlots | undefined>;
+  getContainersSummary(): Promise<Array<Container & { onlineCount: number; warningCount: number; criticalCount: number; offlineCount: number; totalAssigned: number; totalHashrate: number; totalPower: number; avgTemp: number }>>;
 
   getSlotAssignments(containerId: string): Promise<SlotAssignment[]>;
   assignMinerToSlot(containerId: string, rack: number, slot: number, minerId: string): Promise<SlotAssignment>;
@@ -93,21 +95,47 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getMinersWithLatest(): Promise<MinerWithLatest[]> {
-    const allMiners = await this.getMiners();
-    const results: MinerWithLatest[] = [];
-    for (const miner of allMiners) {
-      const latest = await this.getLatestSnapshot(miner.id);
-      const alertCount = await db
-        .select({ count: sql<number>`count(*)::int` })
-        .from(alerts)
-        .where(and(eq(alerts.minerId, miner.id), eq(alerts.acknowledged, false)));
-      results.push({
-        ...miner,
-        latest: latest ?? null,
-        alertCount: alertCount[0]?.count ?? 0,
-      });
-    }
-    return results;
+    const latestSnaps = db
+      .select({
+        minerId: minerSnapshots.minerId,
+        maxCreatedAt: sql<Date>`max(${minerSnapshots.createdAt})`.as("max_created_at"),
+      })
+      .from(minerSnapshots)
+      .groupBy(minerSnapshots.minerId)
+      .as("latest_snaps");
+
+    const rows = await db
+      .select({
+        miner: miners,
+        snapshot: minerSnapshots,
+      })
+      .from(miners)
+      .leftJoin(latestSnaps, eq(miners.id, latestSnaps.minerId))
+      .leftJoin(
+        minerSnapshots,
+        and(
+          eq(minerSnapshots.minerId, miners.id),
+          eq(minerSnapshots.createdAt, latestSnaps.maxCreatedAt)
+        )
+      )
+      .orderBy(miners.name);
+
+    const alertCounts = await db
+      .select({
+        minerId: alerts.minerId,
+        count: sql<number>`count(*)::int`.as("alert_count"),
+      })
+      .from(alerts)
+      .where(eq(alerts.acknowledged, false))
+      .groupBy(alerts.minerId);
+
+    const alertMap = new Map(alertCounts.map((a) => [a.minerId, a.count]));
+
+    return rows.map((row) => ({
+      ...row.miner,
+      latest: row.snapshot ?? null,
+      alertCount: alertMap.get(row.miner.id) ?? 0,
+    }));
   }
 
   async getMinerWithLatest(id: string): Promise<MinerWithLatest | undefined> {
@@ -185,78 +213,75 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getFleetStats(): Promise<FleetStats> {
-    const allMiners = await this.getMiners();
-    let totalHashrate = 0;
-    let totalPower = 0;
-    let totalTemp = 0;
-    let totalEfficiency = 0;
-    let onlineCount = 0;
-    let tempCount = 0;
-    let effCount = 0;
+    const [minerCounts] = await db
+      .select({
+        total: sql<number>`count(*)::int`,
+        online: sql<number>`count(*) filter (where ${miners.status} in ('online', 'warning'))::int`,
+      })
+      .from(miners);
 
-    for (const miner of allMiners) {
-      if (miner.status === "online" || miner.status === "warning") {
-        onlineCount++;
-        const snap = await this.getLatestSnapshot(miner.id);
-        if (snap) {
-          totalHashrate += snap.hashrate ?? 0;
-          totalPower += snap.power ?? 0;
-          if (snap.temperature && snap.temperature > 0) {
-            totalTemp += snap.temperature;
-            tempCount++;
-          }
-          if (snap.hashrate && snap.power && snap.hashrate > 0) {
-            const ths = (snap.hashrate) / 1000;
-            if (ths > 0) {
-              totalEfficiency += (snap.power) / ths;
-              effCount++;
-            }
-          }
-        }
-      }
-    }
+    const latestSnaps = db
+      .select({
+        minerId: minerSnapshots.minerId,
+        maxCreatedAt: sql<Date>`max(${minerSnapshots.createdAt})`.as("max_ca"),
+      })
+      .from(minerSnapshots)
+      .groupBy(minerSnapshots.minerId)
+      .as("ls");
 
-    const activeAlerts = await db
+    const [snapStats] = await db
+      .select({
+        totalHashrate: sql<number>`coalesce(sum(${minerSnapshots.hashrate}), 0)`,
+        totalPower: sql<number>`coalesce(sum(${minerSnapshots.power}), 0)`,
+        avgTemp: sql<number>`coalesce(avg(case when ${minerSnapshots.temperature} > 0 then ${minerSnapshots.temperature} end), 0)`,
+        avgEff: sql<number>`coalesce(avg(case when ${minerSnapshots.hashrate} > 0 then ${minerSnapshots.power}::float / (${minerSnapshots.hashrate}::float / 1000) end), 0)`,
+      })
+      .from(miners)
+      .innerJoin(latestSnaps, eq(miners.id, latestSnaps.minerId))
+      .innerJoin(
+        minerSnapshots,
+        and(
+          eq(minerSnapshots.minerId, miners.id),
+          eq(minerSnapshots.createdAt, latestSnaps.maxCreatedAt)
+        )
+      )
+      .where(sql`${miners.status} in ('online', 'warning')`);
+
+    const [activeAlerts] = await db
       .select({ count: sql<number>`count(*)::int` })
       .from(alerts)
       .where(eq(alerts.acknowledged, false));
 
     return {
-      totalMiners: allMiners.length,
-      onlineMiners: onlineCount,
-      totalHashrate,
-      totalPower,
-      avgTemperature: tempCount > 0 ? totalTemp / tempCount : 0,
-      avgEfficiency: effCount > 0 ? totalEfficiency / effCount : 0,
-      activeAlerts: activeAlerts[0]?.count ?? 0,
+      totalMiners: minerCounts.total,
+      onlineMiners: minerCounts.online,
+      totalHashrate: Number(snapStats.totalHashrate),
+      totalPower: Number(snapStats.totalPower),
+      avgTemperature: Number(snapStats.avgTemp),
+      avgEfficiency: Number(snapStats.avgEff),
+      activeAlerts: activeAlerts.count,
     };
   }
 
   async getFleetHistory(): Promise<Array<{ time: string; hashrate: number; power: number; temp: number }>> {
-    const allMiners = await this.getMiners();
-    const snapMap = new Map<string, { hashrate: number; power: number; temp: number; count: number }>();
+    const rows = await db
+      .select({
+        time: sql<string>`to_char(${minerSnapshots.createdAt}, 'HH24:MI')`.as("time_bucket"),
+        hashrate: sql<number>`coalesce(sum(${minerSnapshots.hashrate}), 0)`,
+        power: sql<number>`coalesce(sum(${minerSnapshots.power}), 0)`,
+        avgTemp: sql<number>`coalesce(avg(case when ${minerSnapshots.temperature} > 0 then ${minerSnapshots.temperature} end), 0)`,
+      })
+      .from(minerSnapshots)
+      .where(gte(minerSnapshots.createdAt, sql`now() - interval '12 hours'`))
+      .groupBy(sql`to_char(${minerSnapshots.createdAt}, 'HH24:MI')`)
+      .orderBy(sql`to_char(${minerSnapshots.createdAt}, 'HH24:MI')`);
 
-    for (const miner of allMiners) {
-      const snaps = await this.getSnapshots(miner.id, 24);
-      for (const snap of snaps) {
-        const time = new Date(snap.createdAt!).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-        const existing = snapMap.get(time) || { hashrate: 0, power: 0, temp: 0, count: 0 };
-        existing.hashrate += snap.hashrate ?? 0;
-        existing.power += snap.power ?? 0;
-        existing.temp += snap.temperature ?? 0;
-        existing.count++;
-        snapMap.set(time, existing);
-      }
-    }
-
-    return Array.from(snapMap.entries())
-      .map(([time, data]) => ({
-        time,
-        hashrate: data.hashrate,
-        power: data.power,
-        temp: data.count > 0 ? data.temp / data.count : 0,
-      }))
-      .reverse();
+    return rows.map((r) => ({
+      time: r.time,
+      hashrate: Number(r.hashrate),
+      power: Number(r.power),
+      temp: Number(r.avgTemp),
+    }));
   }
 
   async getScanConfigs(): Promise<ScanConfig[]> {
@@ -328,6 +353,123 @@ export class DatabaseStorage implements IStorage {
     }
 
     return results;
+  }
+
+  async getContainerWithSlots(id: string): Promise<ContainerWithSlots | undefined> {
+    const container = await this.getContainer(id);
+    if (!container) return undefined;
+
+    const assignments = await db
+      .select()
+      .from(slotAssignments)
+      .where(eq(slotAssignments.containerId, id))
+      .orderBy(slotAssignments.rack, slotAssignments.slot);
+
+    const minerIds = assignments.filter((a) => a.minerId).map((a) => a.minerId!);
+    const minerMap = new Map<string, MinerWithLatest>();
+
+    if (minerIds.length > 0) {
+      const latestSnaps = db
+        .select({
+          minerId: minerSnapshots.minerId,
+          maxCreatedAt: sql<Date>`max(${minerSnapshots.createdAt})`.as("max_created_at"),
+        })
+        .from(minerSnapshots)
+        .groupBy(minerSnapshots.minerId)
+        .as("latest_snaps");
+
+      const rows = await db
+        .select({ miner: miners, snapshot: minerSnapshots })
+        .from(miners)
+        .leftJoin(latestSnaps, eq(miners.id, latestSnaps.minerId))
+        .leftJoin(
+          minerSnapshots,
+          and(
+            eq(minerSnapshots.minerId, miners.id),
+            eq(minerSnapshots.createdAt, latestSnaps.maxCreatedAt)
+          )
+        )
+        .where(sql`${miners.id} = ANY(${minerIds})`);
+
+      const alertCounts = await db
+        .select({
+          minerId: alerts.minerId,
+          count: sql<number>`count(*)::int`.as("ac"),
+        })
+        .from(alerts)
+        .where(and(eq(alerts.acknowledged, false), sql`${alerts.minerId} = ANY(${minerIds})`))
+        .groupBy(alerts.minerId);
+
+      const alertMap = new Map(alertCounts.map((a) => [a.minerId, a.count]));
+
+      for (const row of rows) {
+        minerMap.set(row.miner.id, {
+          ...row.miner,
+          latest: row.snapshot ?? null,
+          alertCount: alertMap.get(row.miner.id) ?? 0,
+        });
+      }
+    }
+
+    const slotsWithMiners = assignments.map((a) => ({
+      ...a,
+      miner: a.minerId ? minerMap.get(a.minerId) ?? null : null,
+    }));
+
+    return { ...container, slots: slotsWithMiners };
+  }
+
+  async getContainersSummary() {
+    const latestSnaps = db
+      .select({
+        minerId: minerSnapshots.minerId,
+        maxCreatedAt: sql<Date>`max(${minerSnapshots.createdAt})`.as("max_ca"),
+      })
+      .from(minerSnapshots)
+      .groupBy(minerSnapshots.minerId)
+      .as("ls");
+
+    const rows = await db
+      .select({
+        containerId: slotAssignments.containerId,
+        onlineCount: sql<number>`count(*) filter (where ${miners.status} = 'online')::int`,
+        warningCount: sql<number>`count(*) filter (where ${miners.status} = 'warning')::int`,
+        criticalCount: sql<number>`count(*) filter (where ${miners.status} = 'critical')::int`,
+        offlineCount: sql<number>`count(*) filter (where ${miners.status} = 'offline')::int`,
+        totalAssigned: sql<number>`count(${miners.id})::int`,
+        totalHashrate: sql<number>`coalesce(sum(${minerSnapshots.hashrate}), 0)`,
+        totalPower: sql<number>`coalesce(sum(${minerSnapshots.power}), 0)`,
+        avgTemp: sql<number>`coalesce(avg(case when ${minerSnapshots.temperature} > 0 then ${minerSnapshots.temperature} end), 0)`,
+      })
+      .from(slotAssignments)
+      .innerJoin(miners, eq(slotAssignments.minerId, miners.id))
+      .leftJoin(latestSnaps, eq(miners.id, latestSnaps.minerId))
+      .leftJoin(
+        minerSnapshots,
+        and(
+          eq(minerSnapshots.minerId, miners.id),
+          eq(minerSnapshots.createdAt, latestSnaps.maxCreatedAt)
+        )
+      )
+      .groupBy(slotAssignments.containerId);
+
+    const summaryMap = new Map(rows.map((r) => [r.containerId, r]));
+
+    const allContainers = await this.getContainers();
+    return allContainers.map((c) => {
+      const s = summaryMap.get(c.id);
+      return {
+        ...c,
+        onlineCount: s ? Number(s.onlineCount) : 0,
+        warningCount: s ? Number(s.warningCount) : 0,
+        criticalCount: s ? Number(s.criticalCount) : 0,
+        offlineCount: s ? Number(s.offlineCount) : 0,
+        totalAssigned: s ? Number(s.totalAssigned) : 0,
+        totalHashrate: s ? Number(s.totalHashrate) : 0,
+        totalPower: s ? Number(s.totalPower) : 0,
+        avgTemp: s ? Number(s.avgTemp) : 0,
+      };
+    });
   }
 
   async getSlotAssignments(containerId: string): Promise<SlotAssignment[]> {

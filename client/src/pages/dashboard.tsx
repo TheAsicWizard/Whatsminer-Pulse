@@ -4,7 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { formatHashrate, formatPower, formatTemp } from "@/lib/format";
-import { SiteMap, ContainerSiteMap } from "@/components/site-map";
+import { ContainerSummaryMap, type ContainerSummary } from "@/components/site-map";
 import { AssignMinerDialog } from "@/components/assign-miner-dialog";
 import { Link } from "wouter";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -28,7 +28,7 @@ import {
   Tooltip,
   ResponsiveContainer,
 } from "recharts";
-import type { FleetStats, MinerWithLatest, ContainerWithSlots } from "@shared/schema";
+import type { FleetStats } from "@shared/schema";
 
 export default function Dashboard() {
   const { toast } = useToast();
@@ -47,43 +47,33 @@ export default function Dashboard() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/containers"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/miners"] });
       toast({ title: "Miner removed from slot" });
     },
   });
 
   const { data: stats, isLoading: statsLoading, error: statsError } = useQuery<FleetStats>({
     queryKey: ["/api/fleet/stats"],
-    refetchInterval: 5000,
-  });
-
-  const { data: miners, isLoading: minersLoading, error: minersError } = useQuery<MinerWithLatest[]>({
-    queryKey: ["/api/miners"],
-    refetchInterval: 5000,
+    refetchInterval: 10000,
   });
 
   const { data: history } = useQuery<Array<{ time: string; hashrate: number; power: number; temp: number }>>({
     queryKey: ["/api/fleet/history"],
+    refetchInterval: 30000,
+  });
+
+  const { data: containerSummaries, isLoading: containersLoading } = useQuery<ContainerSummary[]>({
+    queryKey: ["/api/containers/summary"],
     refetchInterval: 10000,
   });
 
-  const { data: containerList } = useQuery<ContainerWithSlots[]>({
-    queryKey: ["/api/containers"],
-    refetchInterval: 5000,
-  });
+  const hasContainers = containerSummaries && containerSummaries.length > 0;
 
-  const hasContainers = containerList && containerList.length > 0;
-  const assignedMinerIds = new Set(
-    containerList?.flatMap((c) => c.slots.filter((s) => s.minerId).map((s) => s.minerId!)) ?? []
-  );
-  const unassignedMiners = miners?.filter((m) => !assignedMinerIds.has(m.id)) ?? [];
-
-  if (statsError || minersError) {
+  if (statsError) {
     return (
       <div className="p-4 md:p-6 flex flex-col items-center justify-center h-full gap-3">
         <AlertTriangle className="w-10 h-10 text-destructive" />
         <p className="text-sm text-muted-foreground">Failed to load fleet data</p>
-        <p className="text-xs text-muted-foreground">{(statsError || minersError)?.message}</p>
+        <p className="text-xs text-muted-foreground">{statsError?.message}</p>
       </div>
     );
   }
@@ -108,8 +98,8 @@ export default function Dashboard() {
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
         <StatCard
           title="Total Miners"
-          value={stats ? `${stats.totalMiners}` : "--"}
-          subtitle={stats ? `${stats.onlineMiners} online` : undefined}
+          value={stats ? stats.totalMiners.toLocaleString() : "--"}
+          subtitle={stats ? `${stats.onlineMiners.toLocaleString()} online` : undefined}
           icon={<Server className="w-4 h-4" />}
           loading={statsLoading}
           testId="stat-total-miners"
@@ -145,7 +135,7 @@ export default function Dashboard() {
         />
         <StatCard
           title="Active Alerts"
-          value={stats ? `${stats.activeAlerts}` : "--"}
+          value={stats ? stats.activeAlerts.toLocaleString() : "--"}
           icon={<AlertTriangle className="w-4 h-4" />}
           loading={statsLoading}
           destructive={stats ? stats.activeAlerts > 0 : false}
@@ -206,54 +196,50 @@ export default function Dashboard() {
         </Card>
       )}
 
-      {(miners && miners.length > 0) && (
-        <Card>
-          <CardHeader className="pb-2">
-            <div className="flex items-center justify-between">
-              <CardTitle className="text-sm font-medium flex items-center gap-2">
-                <Map className="w-4 h-4" />
-                Site Map
-              </CardTitle>
-              <Link href="/miners" data-testid="link-view-all-miners">
-                <span className="text-xs text-primary cursor-pointer">View details</span>
+      <Card>
+        <CardHeader className="pb-2">
+          <div className="flex items-center justify-between">
+            <CardTitle className="text-sm font-medium flex items-center gap-2">
+              <Map className="w-4 h-4" />
+              Site Map
+              {containerSummaries && (
+                <Badge variant="outline" className="text-[10px] ml-1 no-default-active-elevate">
+                  {containerSummaries.length} containers
+                </Badge>
+              )}
+            </CardTitle>
+            <Link href="/miners" data-testid="link-view-all-miners">
+              <span className="text-xs text-primary cursor-pointer">View details</span>
+            </Link>
+          </div>
+        </CardHeader>
+        <CardContent>
+          {containersLoading ? (
+            <Skeleton className="h-40 w-full" />
+          ) : hasContainers ? (
+            <ContainerSummaryMap
+              containers={containerSummaries}
+              onAssignSlot={(cId, r, s) =>
+                setAssignDialog({ open: true, containerId: cId, rack: r, slot: s, mode: "assign" })
+              }
+              onSwapSlot={(cId, r, s, minerId) =>
+                setAssignDialog({ open: true, containerId: cId, rack: r, slot: s, mode: "swap", currentMinerId: minerId })
+              }
+              onUnassignSlot={(cId, r, s) => unassignMutation.mutate({ containerId: cId, rack: r, slot: s })}
+            />
+          ) : (
+            <div className="text-center py-8">
+              <Server className="w-10 h-10 mx-auto text-muted-foreground mb-3" />
+              <p className="text-sm text-muted-foreground">No containers configured</p>
+              <Link href="/settings">
+                <span className="text-xs text-primary cursor-pointer mt-1 inline-block">
+                  Add containers in Settings
+                </span>
               </Link>
             </div>
-          </CardHeader>
-          <CardContent>
-            {minersLoading ? (
-              <Skeleton className="h-40 w-full" />
-            ) : hasContainers ? (
-              <ContainerSiteMap
-                containers={containerList}
-                unassignedMiners={unassignedMiners}
-                onAssignSlot={(cId, r, s) =>
-                  setAssignDialog({ open: true, containerId: cId, rack: r, slot: s, mode: "assign" })
-                }
-                onSwapSlot={(cId, r, s, minerId) =>
-                  setAssignDialog({ open: true, containerId: cId, rack: r, slot: s, mode: "swap", currentMinerId: minerId })
-                }
-                onUnassignSlot={(cId, r, s) => unassignMutation.mutate({ containerId: cId, rack: r, slot: s })}
-              />
-            ) : (
-              <SiteMap miners={miners} />
-            )}
-          </CardContent>
-        </Card>
-      )}
-
-      {!minersLoading && (!miners || miners.length === 0) && (
-        <Card>
-          <CardContent className="p-8 text-center">
-            <Server className="w-10 h-10 mx-auto text-muted-foreground mb-3" />
-            <p className="text-sm text-muted-foreground">No miners configured yet</p>
-            <Link href="/settings">
-              <span className="text-xs text-primary cursor-pointer mt-1 inline-block">
-                Add your first miner
-              </span>
-            </Link>
-          </CardContent>
-        </Card>
-      )}
+          )}
+        </CardContent>
+      </Card>
 
       <AssignMinerDialog
         open={assignDialog.open}

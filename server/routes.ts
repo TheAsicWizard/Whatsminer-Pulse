@@ -242,6 +242,25 @@ export async function registerRoutes(
     }
   });
 
+  app.get("/api/containers/summary", async (_req, res) => {
+    try {
+      const result = await storage.getContainersSummary();
+      res.json(result);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.get("/api/containers/:id/detail", async (req, res) => {
+    try {
+      const result = await storage.getContainerWithSlots(req.params.id);
+      if (!result) return res.status(404).json({ message: "Container not found" });
+      res.json(result);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
   app.post("/api/containers", async (req, res) => {
     try {
       const parsed = insertContainerSchema.parse(req.body);

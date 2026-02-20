@@ -8,7 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { ChevronDown, ChevronRight, Box, Server, Cpu, Zap, Thermometer } from "lucide-react";
+import { ChevronDown, ChevronRight, Box, Server, Cpu, Zap, Thermometer, Settings } from "lucide-react";
 import type { MinerWithLatest, ContainerWithSlots, Container } from "@shared/schema";
 import { cn } from "@/lib/utils";
 
@@ -33,12 +33,6 @@ const statusColors: Record<string, { bg: string; border: string; text: string }>
     border: "border-gray-300 dark:border-gray-500",
     text: "text-gray-900 dark:text-gray-200",
   },
-};
-
-const emptySlotStyle = {
-  bg: "bg-muted/50",
-  border: "border-dashed border-muted-foreground/30",
-  text: "text-muted-foreground/50",
 };
 
 export type ContainerSummary = Container & {
@@ -284,9 +278,9 @@ function ContainerDetailView({
   if (isLoading || !detail) {
     return (
       <CardContent className="pb-3">
-        <div className="space-y-2">
-          {Array.from({ length: 3 }).map((_, i) => (
-            <Skeleton key={i} className="h-7 w-full" />
+        <div className="flex gap-3 overflow-x-auto">
+          {Array.from({ length: 6 }).map((_, i) => (
+            <Skeleton key={i} className="h-[300px] w-[80px] shrink-0" />
           ))}
         </div>
       </CardContent>
@@ -298,88 +292,143 @@ function ContainerDetailView({
     slotMap.set(`${s.rack}-${s.slot}`, s);
   }
 
+  const slotsPerCol = Math.ceil(container.slotsPerRack / 2);
+
   return (
-    <CardContent className="pb-3 space-y-1">
-      {Array.from({ length: container.rackCount }, (_, rIdx) => {
-        const rackNum = rIdx + 1;
-        return (
-          <div key={rackNum} className="flex items-center gap-2">
-            <span className="text-[10px] font-mono text-muted-foreground w-8 text-right shrink-0">
-              R{String(rackNum).padStart(2, "0")}
-            </span>
-            <div className="flex gap-1 flex-1">
-              {Array.from({ length: container.slotsPerRack }, (_, sIdx) => {
-                const slotNum = sIdx + 1;
-                const assignment = slotMap.get(`${rackNum}-${slotNum}`);
-                const miner = assignment?.miner;
+    <CardContent className="pb-3">
+      <div
+        className="rounded-lg p-3 overflow-x-auto"
+        style={{ backgroundColor: "#005500" }}
+        data-testid={`container-rack-view-${containerId}`}
+      >
+        <div className="flex gap-2 min-w-max">
+          {Array.from({ length: container.rackCount }, (_, rIdx) => {
+            const rackNum = rIdx + 1;
+            const rackLabel = `${container.name}-R${String(rackNum).padStart(3, "0")}`;
 
-                if (miner) {
-                  return (
-                    <SlotBlock
-                      key={`${rackNum}-${slotNum}`}
-                      miner={miner}
-                      label={`${String(slotNum).padStart(2, "0")}`}
-                      onSwap={onSwapSlot ? () => onSwapSlot(containerId, rackNum, slotNum, miner.id) : undefined}
-                      onRemove={onUnassignSlot ? () => onUnassignSlot(containerId, rackNum, slotNum) : undefined}
-                    />
-                  );
-                }
-
-                return (
-                  <EmptySlot
-                    key={`${rackNum}-${slotNum}`}
-                    label={`${String(slotNum).padStart(2, "0")}`}
-                    onAssign={onAssignSlot ? () => onAssignSlot(containerId, rackNum, slotNum) : undefined}
-                  />
-                );
-              })}
-            </div>
-          </div>
-        );
-      })}
+            return (
+              <div
+                key={rackNum}
+                className="flex flex-col rounded"
+                style={{ backgroundColor: "#003300", minWidth: "70px" }}
+              >
+                <div className="flex items-center justify-between px-1.5 py-1 border-b" style={{ borderColor: "#006600" }}>
+                  <span className="text-[9px] font-mono text-green-200 truncate">{rackLabel}</span>
+                  <Settings className="w-2.5 h-2.5 text-green-400/60 shrink-0" />
+                </div>
+                <div className="flex gap-[3px] p-1.5 flex-1">
+                  <div className="flex flex-col gap-[3px]">
+                    {Array.from({ length: slotsPerCol }, (_, sIdx) => {
+                      const slotNum = sIdx + 1;
+                      const assignment = slotMap.get(`${rackNum}-${slotNum}`);
+                      const miner = assignment?.miner;
+                      return miner ? (
+                        <RackSlot
+                          key={`${rackNum}-${slotNum}`}
+                          miner={miner}
+                          containerId={containerId}
+                          rackNum={rackNum}
+                          slotNum={slotNum}
+                          onSwap={onSwapSlot}
+                          onRemove={onUnassignSlot}
+                        />
+                      ) : (
+                        <EmptyRackSlot
+                          key={`${rackNum}-${slotNum}`}
+                          containerId={containerId}
+                          rackNum={rackNum}
+                          slotNum={slotNum}
+                          onAssign={onAssignSlot}
+                        />
+                      );
+                    })}
+                  </div>
+                  <div className="flex flex-col gap-[3px]">
+                    {Array.from({ length: container.slotsPerRack - slotsPerCol }, (_, sIdx) => {
+                      const slotNum = slotsPerCol + sIdx + 1;
+                      const assignment = slotMap.get(`${rackNum}-${slotNum}`);
+                      const miner = assignment?.miner;
+                      return miner ? (
+                        <RackSlot
+                          key={`${rackNum}-${slotNum}`}
+                          miner={miner}
+                          containerId={containerId}
+                          rackNum={rackNum}
+                          slotNum={slotNum}
+                          onSwap={onSwapSlot}
+                          onRemove={onUnassignSlot}
+                        />
+                      ) : (
+                        <EmptyRackSlot
+                          key={`${rackNum}-${slotNum}`}
+                          containerId={containerId}
+                          rackNum={rackNum}
+                          slotNum={slotNum}
+                          onAssign={onAssignSlot}
+                        />
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
     </CardContent>
   );
 }
 
-function SlotBlock({
+function RackSlot({
   miner,
-  label,
+  containerId,
+  rackNum,
+  slotNum,
   onSwap,
   onRemove,
 }: {
   miner: MinerWithLatest;
-  label: string;
-  onSwap?: () => void;
-  onRemove?: () => void;
+  containerId: string;
+  rackNum: number;
+  slotNum: number;
+  onSwap?: (containerId: string, rack: number, slot: number, currentMinerId: string) => void;
+  onRemove?: (containerId: string, rack: number, slot: number) => void;
 }) {
   const status = getMinerStatus(miner);
-  const colors = statusColors[status] || statusColors.offline;
   const s = miner.latest;
+
+  const colorMap: Record<string, string> = {
+    online: "#22c55e",
+    warning: "#f59e0b",
+    critical: "#ef4444",
+    offline: "#6b7280",
+  };
+
+  const bgColor = colorMap[status] || colorMap.offline;
+  const borderColor = status === "critical" ? "#ef4444" : status === "warning" ? "#f59e0b" : "transparent";
 
   return (
     <Tooltip>
       <TooltipTrigger asChild>
         <Link href={`/miners/${miner.id}`}>
           <div
-            className={cn(
-              "flex items-center justify-center rounded cursor-pointer border transition-all",
-              "text-[9px] font-bold font-mono leading-none select-none",
-              "h-7 w-14 min-w-0",
-              "hover:brightness-110 hover:z-10",
-              colors.bg,
-              colors.border,
-              colors.text
-            )}
-            data-testid={`slot-${miner.id}`}
-          >
-            {label}
-          </div>
+            className="rounded-sm cursor-pointer transition-all hover:brightness-125 hover:scale-110 hover:z-10"
+            style={{
+              width: "28px",
+              height: "18px",
+              backgroundColor: bgColor,
+              border: status === "critical" || status === "warning" ? `1.5px solid ${borderColor}` : "none",
+              boxShadow: status === "online" ? "0 0 3px rgba(34,197,94,0.3)" : "none",
+            }}
+            data-testid={`rack-slot-${miner.id}`}
+          />
         </Link>
       </TooltipTrigger>
       <TooltipContent side="top" className="max-w-[240px]">
         <div className="space-y-1">
           <p className="font-semibold text-xs">{miner.name}</p>
           <p className="text-[10px] text-muted-foreground font-mono">{miner.ipAddress}</p>
+          <p className="text-[10px] text-muted-foreground">R{String(rackNum).padStart(2, "0")}-S{String(slotNum).padStart(2, "0")}</p>
           {s ? (
             <div className="grid grid-cols-2 gap-x-3 gap-y-0.5 pt-1 border-t">
               <span className="text-[10px] text-muted-foreground">Hashrate</span>
@@ -395,12 +444,12 @@ function SlotBlock({
           {(onSwap || onRemove) && (
             <div className="flex gap-1 pt-1 border-t">
               {onSwap && (
-                <Button variant="outline" size="sm" className="text-[10px] h-5 px-1.5" onClick={(e) => { e.preventDefault(); e.stopPropagation(); onSwap(); }}>
+                <Button variant="outline" size="sm" className="text-[10px] h-5 px-1.5" onClick={(e) => { e.preventDefault(); e.stopPropagation(); onSwap(containerId, rackNum, slotNum, miner.id); }}>
                   Replace
                 </Button>
               )}
               {onRemove && (
-                <Button variant="ghost" size="sm" className="text-[10px] h-5 px-1.5 text-destructive" onClick={(e) => { e.preventDefault(); e.stopPropagation(); onRemove(); }}>
+                <Button variant="ghost" size="sm" className="text-[10px] h-5 px-1.5 text-destructive" onClick={(e) => { e.preventDefault(); e.stopPropagation(); onRemove(containerId, rackNum, slotNum); }}>
                   Remove
                 </Button>
               )}
@@ -412,28 +461,34 @@ function SlotBlock({
   );
 }
 
-function EmptySlot({ label, onAssign }: { label: string; onAssign?: () => void }) {
+function EmptyRackSlot({
+  containerId,
+  rackNum,
+  slotNum,
+  onAssign,
+}: {
+  containerId: string;
+  rackNum: number;
+  slotNum: number;
+  onAssign?: (containerId: string, rack: number, slot: number) => void;
+}) {
   return (
     <Tooltip>
       <TooltipTrigger asChild>
         <div
-          className={cn(
-            "flex items-center justify-center rounded cursor-pointer transition-all",
-            "text-[9px] font-mono leading-none select-none",
-            "h-7 w-14 min-w-0",
-            "hover:bg-muted",
-            emptySlotStyle.bg,
-            emptySlotStyle.border,
-            emptySlotStyle.text
-          )}
-          onClick={onAssign}
-          data-testid={`slot-empty-${label}`}
-        >
-          {label}
-        </div>
+          className="rounded-sm cursor-pointer transition-all hover:brightness-150"
+          style={{
+            width: "28px",
+            height: "18px",
+            backgroundColor: "#004400",
+            border: "1px dashed #006600",
+          }}
+          onClick={() => onAssign?.(containerId, rackNum, slotNum)}
+          data-testid={`rack-slot-empty-${rackNum}-${slotNum}`}
+        />
       </TooltipTrigger>
       <TooltipContent side="top">
-        <p className="text-xs">Empty slot {label}</p>
+        <p className="text-xs">Empty slot R{String(rackNum).padStart(2, "0")}-S{String(slotNum).padStart(2, "0")}</p>
         {onAssign && <p className="text-[10px] text-muted-foreground">Click to assign a miner</p>}
       </TooltipContent>
     </Tooltip>

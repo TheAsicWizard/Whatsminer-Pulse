@@ -72,6 +72,7 @@ export interface IStorage {
   clearMacLocationMappings(): Promise<void>;
   getMinerByMac(macAddress: string): Promise<Miner | undefined>;
   autoAssignByMac(): Promise<{ assigned: number; containersCreated: number }>;
+  resetAllData(): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -651,6 +652,17 @@ export class DatabaseStorage implements IStorage {
     }
 
     return { assigned, containersCreated };
+  }
+
+  async resetAllData(): Promise<void> {
+    await db.delete(slotAssignments);
+    await db.delete(minerSnapshots);
+    await db.delete(alerts);
+    await db.delete(alertRules);
+    await db.delete(miners);
+    await db.delete(containers);
+    await db.delete(macLocationMappings);
+    await db.delete(scanConfigs);
   }
 }
 

@@ -542,5 +542,14 @@ export async function registerRoutes(
     }
   });
 
+  app.post("/api/reset-all-data", async (_req, res) => {
+    try {
+      await storage.resetAllData();
+      res.json({ success: true, message: "All data has been cleared" });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
   return httpServer;
 }

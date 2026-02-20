@@ -25,6 +25,17 @@ import {
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
+import {
   Plus,
   Server,
   Trash2,
@@ -41,6 +52,7 @@ import {
   FileText,
   CheckCircle2,
   MapPin,
+  AlertTriangle,
 } from "lucide-react";
 import type { Miner, AlertRule, ScanConfig, ScanProgress, Container, ContainerWithSlots, MinerWithLatest } from "@shared/schema";
 
@@ -61,6 +73,7 @@ export default function Settings() {
       <NetworkScanner />
       <MinerManagement />
       <AlertRuleManagement />
+      <DangerZone />
     </div>
   );
 }
@@ -1231,6 +1244,100 @@ function ContainerManagement() {
             </p>
           </div>
         )}
+      </CardContent>
+    </Card>
+  );
+}
+
+function DangerZone() {
+  const { toast } = useToast();
+  const [confirmText, setConfirmText] = useState("");
+
+  const resetMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/reset-all-data");
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries();
+      setConfirmText("");
+      toast({
+        title: "All data cleared",
+        description: "All miners, containers, snapshots, alerts, and scan configs have been deleted.",
+      });
+    },
+    onError: (err: Error) => {
+      toast({
+        title: "Reset failed",
+        description: err.message,
+        variant: "destructive",
+      });
+    },
+  });
+
+  return (
+    <Card className="border-destructive/50" data-testid="card-danger-zone">
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2 text-destructive">
+          <AlertTriangle className="w-5 h-5" />
+          Danger Zone
+        </CardTitle>
+        <CardDescription>
+          Permanently delete all data. This cannot be undone.
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        <div className="space-y-4">
+          <div className="rounded-md border border-destructive/30 bg-destructive/5 p-4 space-y-3">
+            <h4 className="font-medium text-sm">Reset All Data</h4>
+            <p className="text-sm text-muted-foreground">
+              This will permanently delete all miners, containers, slot assignments, snapshots, alerts, alert rules, MAC mappings, and scan configs.
+            </p>
+            <div className="flex items-center gap-3">
+              <Input
+                placeholder='Type "RESET" to confirm'
+                value={confirmText}
+                onChange={(e) => setConfirmText(e.target.value)}
+                className="max-w-[200px]"
+                data-testid="input-reset-confirm"
+              />
+              <AlertDialog>
+                <AlertDialogTrigger asChild>
+                  <Button
+                    variant="destructive"
+                    disabled={confirmText !== "RESET" || resetMutation.isPending}
+                    data-testid="button-reset-all"
+                  >
+                    {resetMutation.isPending ? (
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    ) : (
+                      <Trash2 className="w-4 h-4 mr-2" />
+                    )}
+                    Delete All Data
+                  </Button>
+                </AlertDialogTrigger>
+                <AlertDialogContent>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+                    <AlertDialogDescription>
+                      This will permanently delete ALL data including miners, containers, snapshots, alerts, and scan configurations. This action cannot be undone.
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel data-testid="button-reset-cancel">Cancel</AlertDialogCancel>
+                    <AlertDialogAction
+                      onClick={() => resetMutation.mutate()}
+                      className="bg-destructive text-destructive-foreground"
+                      data-testid="button-reset-confirm"
+                    >
+                      Yes, delete everything
+                    </AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
+            </div>
+          </div>
+        </div>
       </CardContent>
     </Card>
   );

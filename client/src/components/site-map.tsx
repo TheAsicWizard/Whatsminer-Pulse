@@ -6,7 +6,6 @@ import { formatHashrate, formatTemp, formatPower } from "@/lib/format";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ChevronDown, ChevronRight, Box, Server, Cpu, Zap, Thermometer, Settings } from "lucide-react";
 import type { MinerWithLatest, ContainerWithSlots, Container } from "@shared/schema";
@@ -310,14 +309,15 @@ function ContainerDetailView({
               <div
                 key={rackNum}
                 className="flex flex-col rounded"
-                style={{ backgroundColor: "#003300", minWidth: "70px" }}
+                style={{ backgroundColor: "#003300", minWidth: "50px" }}
               >
                 <div className="flex items-center justify-between px-1.5 py-1 border-b" style={{ borderColor: "#006600" }}>
                   <span className="text-[9px] font-mono text-green-200 truncate">{rackLabel}</span>
                   <Settings className="w-2.5 h-2.5 text-green-400/60 shrink-0" />
                 </div>
-                <div className="flex gap-[3px] p-1.5 flex-1">
+                <div className="flex gap-[4px] p-1.5 flex-1">
                   <div className="flex flex-col gap-[3px]">
+                    <div style={{ width: "16px", height: "14px", backgroundColor: "#8a8a8a" }} />
                     {Array.from({ length: slotsPerCol }, (_, sIdx) => {
                       const slotNum = sIdx + 1;
                       const assignment = slotMap.get(`${rackNum}-${slotNum}`);
@@ -330,13 +330,12 @@ function ContainerDetailView({
                           containerId={containerId}
                           rackNum={rackNum}
                           slotNum={slotNum}
-                          onSwap={onSwapSlot}
-                          onRemove={onUnassignSlot}
                         />
                       );
                     })}
                   </div>
                   <div className="flex flex-col gap-[3px]">
+                    <div style={{ width: "16px", height: "14px", backgroundColor: "#8a8a8a" }} />
                     {Array.from({ length: container.slotsPerRack - slotsPerCol }, (_, sIdx) => {
                       const slotNum = slotsPerCol + sIdx + 1;
                       const assignment = slotMap.get(`${rackNum}-${slotNum}`);
@@ -349,8 +348,6 @@ function ContainerDetailView({
                           containerId={containerId}
                           rackNum={rackNum}
                           slotNum={slotNum}
-                          onSwap={onSwapSlot}
-                          onRemove={onUnassignSlot}
                         />
                       );
                     })}
@@ -370,15 +367,11 @@ function RackSlot({
   containerId,
   rackNum,
   slotNum,
-  onSwap,
-  onRemove,
 }: {
   miner: MinerWithLatest;
   containerId: string;
   rackNum: number;
   slotNum: number;
-  onSwap?: (containerId: string, rack: number, slot: number, currentMinerId: string) => void;
-  onRemove?: (containerId: string, rack: number, slot: number) => void;
 }) {
   const status = getMinerStatus(miner);
   const s = miner.latest;
@@ -391,26 +384,25 @@ function RackSlot({
   };
 
   const bgColor = colorMap[status] || colorMap.offline;
-  const borderColor = status === "critical" ? "#ef4444" : status === "warning" ? "#f59e0b" : "transparent";
+  const borderColor = status === "critical" ? "#dc2626" : status === "warning" ? "#d97706" : "transparent";
 
   return (
     <Tooltip>
       <TooltipTrigger asChild>
         <Link href={`/miners/${miner.id}`}>
           <div
-            className="rounded-sm cursor-pointer transition-all hover:brightness-125 hover:scale-110 hover:z-10"
+            className="cursor-pointer hover:brightness-125"
             style={{
-              width: "28px",
-              height: "18px",
+              width: "16px",
+              height: "14px",
               backgroundColor: bgColor,
-              border: status === "critical" || status === "warning" ? `1.5px solid ${borderColor}` : "none",
-              boxShadow: status === "online" ? "0 0 3px rgba(34,197,94,0.3)" : "none",
+              border: status === "critical" || status === "warning" ? `1px solid ${borderColor}` : "none",
             }}
             data-testid={`rack-slot-${miner.id}`}
           />
         </Link>
       </TooltipTrigger>
-      <TooltipContent side="top" className="max-w-[240px]">
+      <TooltipContent side="top" className="max-w-[220px]">
         <div className="space-y-1">
           <p className="font-semibold text-xs">{miner.name}</p>
           <p className="text-[10px] text-muted-foreground font-mono">{miner.ipAddress}</p>
@@ -426,20 +418,6 @@ function RackSlot({
             </div>
           ) : (
             <p className="text-[10px] text-muted-foreground pt-1">No data</p>
-          )}
-          {(onSwap || onRemove) && (
-            <div className="flex gap-1 pt-1 border-t">
-              {onSwap && (
-                <Button variant="outline" size="sm" className="text-[10px] h-5 px-1.5" onClick={(e) => { e.preventDefault(); e.stopPropagation(); onSwap(containerId, rackNum, slotNum, miner.id); }}>
-                  Replace
-                </Button>
-              )}
-              {onRemove && (
-                <Button variant="ghost" size="sm" className="text-[10px] h-5 px-1.5 text-destructive" onClick={(e) => { e.preventDefault(); e.stopPropagation(); onRemove(containerId, rackNum, slotNum); }}>
-                  Remove
-                </Button>
-              )}
-            </div>
           )}
         </div>
       </TooltipContent>

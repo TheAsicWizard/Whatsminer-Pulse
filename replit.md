@@ -24,11 +24,17 @@ Real-time WhatsMiner mining fleet monitoring dashboard with health alerts, perfo
 
 ## Key Features
 - Fleet overview dashboard with real-time stats and Site Map visualization
-- **Site Map**: Color-coded grid view of all miners (green=online, amber=warning, red=critical, gray=offline) with hover tooltips
-- **Container Management**: Hierarchical Container > Rack > Slot layout with collapsible container cards
+- **Site Map (Top-Down Aerial View)**: Bird's-eye view of the entire mine site showing containers as colored rectangles in rows (8 per row)
+  - Color-coded by health: green=healthy, amber=warnings, red=critical issues, gray=offline/empty
+  - Mini health bars on each container showing status breakdown
+  - Hover tooltips with quick stats (online/total miners, hashrate, power, avg temp)
+  - Click any container to drill into rack/slot detail view with "Back to Site Map" navigation
+  - Zoom in/out/reset controls + mouse wheel zoom + click-and-drag pan
+  - Dot-grid background for spatial reference, container/miner counts in bottom-left
+- **Container Management**: Hierarchical Container > Rack > Slot layout with drill-down from site map
   - Site Builder in Settings for creating/editing containers with rack count, slots per rack, IP ranges
   - Auto-assign miners to slots by IP range matching
-  - Interactive slot assignment: click empty slot to assign, replace/swap for RMAs
+  - Interactive slot assignment: click empty slot to assign, replace/swap for RMAs (in rack detail view)
   - Container-level summary stats (online count, hashrate, power, avg temp)
   - Naming convention: C188-01-02 (Container-Rack-Slot)
 - Individual miner detail with hashrate/temp/power charts

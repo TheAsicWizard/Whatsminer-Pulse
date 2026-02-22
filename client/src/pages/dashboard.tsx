@@ -215,7 +215,7 @@ export default function Dashboard() {
         </CardHeader>
         <CardContent>
           {containersLoading ? (
-            <Skeleton className="h-40 w-full" />
+            <Skeleton className="h-[420px] w-full" />
           ) : hasContainers ? (
             <ContainerSummaryMap
               containers={containerSummaries}

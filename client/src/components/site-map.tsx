@@ -325,15 +325,6 @@ export function ContainerSummaryMap({ containers, onAssignSlot, onSwapSlot, onUn
               transformOrigin: "0 0",
             }}
           >
-            {siteSettings?.backgroundImage && (
-              <img
-                src={siteSettings.backgroundImage}
-                alt="Site map background"
-                className="absolute inset-0 w-full h-full object-cover"
-                style={{ opacity: 0.35 }}
-                draggable={false}
-              />
-            )}
             {containers.map((container) => {
               if (container.layoutX == null || container.layoutY == null) return null;
               const rotation = container.layoutRotation ?? 0;

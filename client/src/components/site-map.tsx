@@ -642,7 +642,7 @@ function ContainerDetailPanel({
                               <TooltipTrigger asChild>
                                 <div
                                   className="cursor-pointer hover:brightness-150"
-                                  style={{ width: "18px", height: "18px", backgroundColor: "#8a8a8a" }}
+                                  style={{ width: "18px", height: "18px", backgroundColor: "transparent", border: "1px dashed #4a5568" }}
                                   onClick={() => onAssignSlot?.(container.id, rackNum, slotNum)}
                                   data-testid={`vacant-slot-${container.id}-${rackNum}-${slotNum}`}
                                 />

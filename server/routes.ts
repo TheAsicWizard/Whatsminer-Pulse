@@ -655,37 +655,47 @@ export async function registerRoutes(
       const mediaType = base64Match[1] as "image/png" | "image/jpeg" | "image/gif" | "image/webp";
       const base64Data = base64Match[2];
 
-      const structurePrompt = `Analyze this site layout image of a mining facility. The image shows rectangular shipping containers arranged in distinct groups/regions. Each container has a text label like "C000", "C001", "C210", etc.
+      const structurePrompt = `You are analyzing a mining facility site plan. The image shows rectangular shipping containers with BLACK OUTLINES. Each container has a text label like "C000", "C001", "C210".
 
-Your task: Identify the distinct GROUPS of containers visible in the image. For each group, provide:
+CRITICAL: To determine each container's rotation angle, look at the BLACK RECTANGULAR OUTLINES of the containers themselves. The long axis of each rectangle tells you the exact angle. Measure this carefully:
+- If containers are perfectly horizontal (long axis left-right), rotation = 0
+- If containers are tilted diagonally from lower-left to upper-right, the rotation will be between 300-340 degrees (e.g. 325 means the long axis goes from lower-left to upper-right at about 35 degrees above horizontal)
+- The outline shape is the ground truth - do NOT guess angles
 
-1. "boundingBox": The rectangular area containing this group, as percentage coordinates (0-100). Format: {"x1": left%, "y1": top%, "x2": right%, "y2": bottom%}
-2. "rotation": The angle (in degrees) that containers in this group are rotated. 0 = horizontal, negative = rotated counterclockwise. Use 325 for diagonal groups going from lower-left to upper-right.
-3. "rows": Number of rows of containers in this group
-4. "containersPerRow": Approximate number of containers per row
-5. "readableLabels": Array of any container labels you can actually read from the image in this group. For each, include the name and its approximate position. Format: [{"name": "C210", "x": 85, "y": 54}]
-6. "description": Brief description of where this group is in the image
+Your task: Identify distinct GROUPS of containers. Containers in the same group share the same rotation angle and are arranged in parallel rows.
 
-Also determine the overall ordering: which group has the lowest-numbered containers and which has the highest.
+For EACH group, provide:
+1. "rows": An array describing each row of containers in this group. Each row has:
+   - "rowStartX", "rowStartY": percentage position (0-100) of the FIRST container in this row  
+   - "rowEndX", "rowEndY": percentage position (0-100) of the LAST container in this row
+   - "count": number of containers in this row
+2. "rotation": The measured rotation angle from the container outlines (0 for horizontal, 325 for typical diagonal)
+3. "readableLabels": Labels you can read, with position. Format: [{"name": "C210", "x": 85, "y": 54}]
+4. "description": Where this group is in the image
+5. "containerOrder": "first" if this group has the lowest-numbered containers
 
-There are ${totalContainers} containers total. Container names are: ${containerNames.slice(0, 5).join(", ")} through ${containerNames.slice(-3).join(", ")}.
+For rows in DIAGONAL groups: rowStart should be at the lower-left end of the row, rowEnd at the upper-right end.
+For rows in HORIZONTAL groups: rowStart should be at the left end, rowEnd at the right end. List rows from top to bottom.
 
-Return ONLY valid JSON with this structure (no explanation, no markdown):
+There are ${totalContainers} containers total: ${containerNames.slice(0, 5).join(", ")} ... ${containerNames.slice(-3).join(", ")}.
+
+Return ONLY valid JSON (no markdown, no explanation):
 {
   "groups": [
     {
       "id": 1,
       "description": "Upper-left diagonal section",
-      "boundingBox": {"x1": 5, "y1": 30, "x2": 45, "y2": 75},
       "rotation": 325,
-      "rows": 6,
-      "containersPerRow": 14,
+      "rows": [
+        {"rowStartX": 5, "rowStartY": 54, "rowEndX": 35, "rowEndY": 32, "count": 14},
+        {"rowStartX": 7.5, "rowStartY": 58, "rowEndX": 37.5, "rowEndY": 36, "count": 14}
+      ],
       "readableLabels": [{"name": "C000", "x": 5, "y": 54}],
       "containerOrder": "first"
     }
   ],
   "totalVisibleContainers": 284,
-  "orderingNotes": "Containers are numbered starting from the diagonal group on the left, then continuing in horizontal rows on the right"
+  "orderingNotes": "Containers numbered starting from diagonal group on left, then horizontal rows on right"
 }`;
 
       console.log("Phase 1: Asking Claude to analyze site layout structure...");
@@ -720,13 +730,19 @@ Return ONLY valid JSON with this structure (no explanation, no markdown):
         structureJsonStr = structureCodeBlock[1].trim();
       }
 
+      interface DetectedRow {
+        rowStartX: number;
+        rowStartY: number;
+        rowEndX: number;
+        rowEndY: number;
+        count: number;
+      }
+
       interface DetectedGroup {
         id: number;
         description: string;
-        boundingBox: { x1: number; y1: number; x2: number; y2: number };
         rotation: number;
-        rows: number;
-        containersPerRow: number;
+        rows: DetectedRow[];
         readableLabels: Array<{ name: string; x: number; y: number }>;
         containerOrder?: string;
       }
@@ -748,19 +764,27 @@ Return ONLY valid JSON with this structure (no explanation, no markdown):
 
       console.log(`Phase 1: Identified ${structureData.groups.length} groups. Notes: ${structureData.orderingNotes || "none"}`);
       for (const g of structureData.groups) {
-        console.log(`  Group ${g.id}: ${g.description}, bbox=(${g.boundingBox.x1},${g.boundingBox.y1})-(${g.boundingBox.x2},${g.boundingBox.y2}), rotation=${g.rotation}, ${g.rows}x${g.containersPerRow}, labels=${g.readableLabels?.length || 0}`);
+        const rowCount = Array.isArray(g.rows) ? g.rows.length : 0;
+        const totalInGroup = Array.isArray(g.rows) ? g.rows.reduce((s: number, r: any) => s + (r.count || 0), 0) : 0;
+        console.log(`  Group ${g.id}: ${g.description}, rotation=${g.rotation}, ${rowCount} rows, ~${totalInGroup} containers, labels=${g.readableLabels?.length || 0}`);
+        if (Array.isArray(g.rows)) {
+          for (let ri = 0; ri < g.rows.length; ri++) {
+            const r = g.rows[ri];
+            console.log(`    Row ${ri}: (${r.rowStartX},${r.rowStartY}) -> (${r.rowEndX},${r.rowEndY}), count=${r.count}`);
+          }
+        }
       }
 
-      console.log("Phase 2: Validating and distributing containers across detected groups...");
+      console.log("Phase 2: Placing containers along detected row lines...");
 
       const validGroups = structureData.groups
         .filter((g) => {
-          const bb = g.boundingBox;
-          if (!bb || typeof bb.x1 !== "number" || typeof bb.y1 !== "number" || typeof bb.x2 !== "number" || typeof bb.y2 !== "number") return false;
-          if (bb.x1 >= bb.x2 || bb.y1 >= bb.y2) return false;
-          if (bb.x1 < 0 || bb.x2 > 100 || bb.y1 < 0 || bb.y2 > 100) return false;
-          if (!g.rows || g.rows <= 0 || !g.containersPerRow || g.containersPerRow <= 0) return false;
-          return true;
+          if (!Array.isArray(g.rows) || g.rows.length === 0) return false;
+          return g.rows.some((r) =>
+            typeof r.rowStartX === "number" && typeof r.rowStartY === "number" &&
+            typeof r.rowEndX === "number" && typeof r.rowEndY === "number" &&
+            typeof r.count === "number" && r.count > 0
+          );
         })
         .sort((a, b) => {
           const aLabels = (a.readableLabels || []).filter(l => l.name && l.name.match(/^C\d+$/));
@@ -770,131 +794,85 @@ Return ONLY valid JSON with this structure (no explanation, no markdown):
           if (aMin !== bMin) return aMin - bMin;
           if (a.containerOrder === "first") return -1;
           if (b.containerOrder === "first") return 1;
-          return (a.boundingBox.x1 + a.boundingBox.y1) - (b.boundingBox.x1 + b.boundingBox.y1);
+          const aFirstRow = a.rows[0];
+          const bFirstRow = b.rows[0];
+          return (aFirstRow.rowStartX + aFirstRow.rowStartY) - (bFirstRow.rowStartX + bFirstRow.rowStartY);
         });
 
       if (validGroups.length === 0) {
-        return res.status(500).json({ message: "AI did not return valid container group data. Try the Wolf Hollow template." });
+        return res.status(500).json({ message: "AI did not return valid row data. Try the Wolf Hollow template." });
       }
 
-      const rawGroupCapacities = validGroups.map(g => g.rows * g.containersPerRow);
-      const totalRawCapacity = rawGroupCapacities.reduce((s, c) => s + c, 0);
-
-      const groupAllocations: number[] = [];
-      let allocated = 0;
-      for (let i = 0; i < validGroups.length; i++) {
-        if (i === validGroups.length - 1) {
-          groupAllocations.push(totalContainers - allocated);
-        } else {
-          const share = Math.round((rawGroupCapacities[i] / totalRawCapacity) * totalContainers);
-          groupAllocations.push(share);
-          allocated += share;
+      const allDetectedRows: { row: DetectedRow; rotation: number; groupIdx: number }[] = [];
+      for (let gi = 0; gi < validGroups.length; gi++) {
+        const group = validGroups[gi];
+        for (const row of group.rows) {
+          if (typeof row.rowStartX === "number" && typeof row.count === "number" && row.count > 0) {
+            allDetectedRows.push({ row, rotation: group.rotation || 0, groupIdx: gi });
+          }
         }
       }
 
-      function generateDiagonalRow(
-        count: number,
-        x1: number, y1: number,
-        x2: number, y2: number,
-        rotation: number,
-        names: string[]
-      ): Array<{ name: string; x: number; y: number; rotation: number }> {
-        const result: Array<{ name: string; x: number; y: number; rotation: number }> = [];
-        for (let i = 0; i < count && i < names.length; i++) {
-          const t = count > 1 ? i / (count - 1) : 0.5;
-          result.push({
-            name: names[i],
-            x: Math.max(1, Math.min(99, x1 + t * (x2 - x1))),
-            y: Math.max(1, Math.min(99, y1 + t * (y2 - y1))),
-            rotation,
-          });
-        }
-        return result;
-      }
-
-      function generateHorizontalRow(
-        count: number,
-        xStart: number, xEnd: number,
-        y: number,
-        rotation: number,
-        names: string[]
-      ): Array<{ name: string; x: number; y: number; rotation: number }> {
-        const result: Array<{ name: string; x: number; y: number; rotation: number }> = [];
-        for (let i = 0; i < count && i < names.length; i++) {
-          const t = count > 1 ? i / (count - 1) : 0.5;
-          result.push({
-            name: names[i],
-            x: Math.max(1, Math.min(99, xStart + t * (xEnd - xStart))),
-            y: Math.max(1, Math.min(99, y)),
-            rotation,
-          });
-        }
-        return result;
-      }
+      const totalDetectedCapacity = allDetectedRows.reduce((s, r) => s + r.row.count, 0);
+      const scaleFactor = totalDetectedCapacity > 0 ? totalContainers / totalDetectedCapacity : 1;
 
       const allPositions: Array<{ name: string; x: number; y: number; rotation: number }> = [];
       let containerIdx = 0;
 
-      for (let gi = 0; gi < validGroups.length; gi++) {
-        const group = validGroups[gi];
-        const containersForGroup = groupAllocations[gi];
-        if (containersForGroup <= 0) continue;
+      for (let ri = 0; ri < allDetectedRows.length && containerIdx < totalContainers; ri++) {
+        const { row, rotation } = allDetectedRows[ri];
+        const isLastRow = ri === allDetectedRows.length - 1;
+        let rowCount: number;
 
-        const bb = group.boundingBox;
-        const rotation = group.rotation || 0;
-        const numRows = Math.max(1, group.rows);
-        const perRow = Math.ceil(containersForGroup / numRows);
-        let placedInGroup = 0;
-
-        const isDiagonal = rotation !== 0 && rotation !== 180 && rotation !== 360;
-
-        for (let row = 0; row < numRows && placedInGroup < containersForGroup && containerIdx < totalContainers; row++) {
-          const remaining = containersForGroup - placedInGroup;
-          const rowCount = Math.min(perRow, remaining);
-          if (rowCount <= 0) break;
-
-          const rowFraction = numRows > 1 ? row / (numRows - 1) : 0.5;
-          const names = containerNames.slice(containerIdx, containerIdx + rowCount);
-
-          if (isDiagonal) {
-            const rowStartX = bb.x1 + rowFraction * (bb.x2 - bb.x1) * 0.15;
-            const rowStartY = bb.y1 + rowFraction * (bb.y2 - bb.y1);
-            const rowEndX = bb.x1 + (bb.x2 - bb.x1) * (0.65 + rowFraction * 0.35);
-            const rowEndY = bb.y1 + rowFraction * (bb.y2 - bb.y1) * 0.4;
-
-            const positions = generateDiagonalRow(rowCount, rowStartX, rowStartY, rowEndX, rowEndY, rotation, names);
-            allPositions.push(...positions);
-          } else {
-            const y = bb.y1 + rowFraction * (bb.y2 - bb.y1);
-            const positions = generateHorizontalRow(rowCount, bb.x1, bb.x2, y, rotation, names);
-            allPositions.push(...positions);
-          }
-
-          placedInGroup += rowCount;
-          containerIdx += rowCount;
+        if (isLastRow) {
+          rowCount = totalContainers - containerIdx;
+        } else {
+          rowCount = Math.round(row.count * scaleFactor);
+          rowCount = Math.min(rowCount, totalContainers - containerIdx);
         }
 
-        console.log(`  Group ${gi + 1}: placed ${placedInGroup}/${containersForGroup} containers`);
-      }
+        if (rowCount <= 0) continue;
 
-      if (containerIdx < totalContainers) {
-        console.log(`Warning: ${totalContainers - containerIdx} containers unplaced, adding to last group`);
-        const lastBb = validGroups[validGroups.length - 1].boundingBox;
-        while (containerIdx < totalContainers) {
-          const i = containerIdx - allPositions.length + (totalContainers - containerIdx);
-          const col = i % 10;
-          const row = Math.floor(i / 10);
+        const sx = Math.max(0, Math.min(100, row.rowStartX));
+        const sy = Math.max(0, Math.min(100, row.rowStartY));
+        const ex = Math.max(0, Math.min(100, row.rowEndX));
+        const ey = Math.max(0, Math.min(100, row.rowEndY));
+
+        for (let i = 0; i < rowCount && containerIdx < totalContainers; i++) {
+          const t = rowCount > 1 ? i / (rowCount - 1) : 0.5;
           allPositions.push({
             name: containerNames[containerIdx],
-            x: Math.max(1, Math.min(99, lastBb.x1 + col * 3)),
-            y: Math.max(1, Math.min(99, lastBb.y2 + 2 + row * 4)),
-            rotation: 0,
+            x: Math.max(1, Math.min(99, sx + t * (ex - sx))),
+            y: Math.max(1, Math.min(99, sy + t * (ey - sy))),
+            rotation,
           });
           containerIdx++;
         }
+
+        console.log(`  Row ${ri + 1}: placed ${rowCount} containers from (${sx.toFixed(1)},${sy.toFixed(1)}) to (${ex.toFixed(1)},${ey.toFixed(1)}), rotation=${rotation}`);
       }
 
-      console.log(`Phase 2: Distributed ${allPositions.length} containers across ${validGroups.length} groups.`);
+      if (containerIdx < totalContainers) {
+        console.log(`Warning: ${totalContainers - containerIdx} containers still unplaced`);
+        const lastRow = allDetectedRows[allDetectedRows.length - 1];
+        let fallbackY = Math.min(99, lastRow.row.rowEndY + 5);
+        while (containerIdx < totalContainers) {
+          const batch = Math.min(10, totalContainers - containerIdx);
+          for (let i = 0; i < batch; i++) {
+            const t = batch > 1 ? i / (batch - 1) : 0.5;
+            allPositions.push({
+              name: containerNames[containerIdx],
+              x: Math.max(1, Math.min(99, lastRow.row.rowStartX + t * (lastRow.row.rowEndX - lastRow.row.rowStartX))),
+              y: Math.max(1, Math.min(99, fallbackY)),
+              rotation: 0,
+            });
+            containerIdx++;
+          }
+          fallbackY = Math.min(99, fallbackY + 4);
+        }
+      }
+
+      console.log(`Phase 2: Distributed ${allPositions.length} containers across ${allDetectedRows.length} rows.`);
 
       const validPositions = allPositions
         .filter((p) => containerMap.has(p.name))

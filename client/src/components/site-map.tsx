@@ -390,8 +390,8 @@ function ContainerBlock({ container, onClick, compact }: { container: ContainerS
           onClick={(e) => { e.stopPropagation(); onClick(); }}
           className="group relative flex flex-col items-center transition-all duration-200 hover:scale-105"
           style={{
-            width: compact ? "44px" : "100px",
-            height: compact ? "24px" : "68px",
+            width: compact ? "36px" : "100px",
+            height: compact ? "18px" : "68px",
             cursor: "pointer",
           }}
           data-testid={`container-block-${container.id}`}
@@ -427,15 +427,6 @@ function ContainerBlock({ container, onClick, compact }: { container: ContainerS
                     {offPct > 0 && <div className="h-full" style={{ width: `${offPct * 100}%`, backgroundColor: "#6b7280" }} />}
                   </div>
                 </>
-              )}
-
-              {container.totalAssigned > 0 && compact && (
-                <div className="flex w-[80%] h-[2px] rounded-full overflow-hidden bg-black/30">
-                  {onlinePct > 0 && <div className="h-full" style={{ width: `${onlinePct * 100}%`, backgroundColor: "#22c55e" }} />}
-                  {warnPct > 0 && <div className="h-full" style={{ width: `${warnPct * 100}%`, backgroundColor: "#f59e0b" }} />}
-                  {critPct > 0 && <div className="h-full" style={{ width: `${critPct * 100}%`, backgroundColor: "#ef4444" }} />}
-                  {offPct > 0 && <div className="h-full" style={{ width: `${offPct * 100}%`, backgroundColor: "#6b7280" }} />}
-                </div>
               )}
 
               {container.totalAssigned === 0 && !compact && (

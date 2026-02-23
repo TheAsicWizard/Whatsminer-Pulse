@@ -638,8 +638,11 @@ export class DatabaseStorage implements IStorage {
     const allMappings = await this.getMacLocationMappings();
     if (allMappings.length === 0) return { assigned: 0, created: 0, containersCreated: 0 };
 
+    console.log(`[autoAssignByMac] Starting with ${allMappings.length} MAC mappings`);
+
     const allContainers = await this.getContainers();
     const containerMap = new Map(allContainers.map((c) => [c.name, c]));
+    console.log(`[autoAssignByMac] Found ${allContainers.length} containers in database`);
 
     const containerStats = new Map<string, { maxRack: number; maxSlot: number }>();
     for (const m of allMappings) {
@@ -663,6 +666,7 @@ export class DatabaseStorage implements IStorage {
         });
         containerMap.set(name, created);
         containersCreated++;
+        console.log(`[autoAssignByMac] Created missing container: ${name}`);
       }
     }
 
@@ -674,26 +678,35 @@ export class DatabaseStorage implements IStorage {
       }
     }
 
-    console.log(`[autoAssignByMac] ${allMappings.length} mappings, ${minerByMac.size} existing miners with MAC addresses`);
+    console.log(`[autoAssignByMac] ${minerByMac.size} existing miners with MAC addresses`);
+
+    await db.delete(slotAssignments);
+    console.log(`[autoAssignByMac] Cleared all existing slot assignments for clean import`);
 
     let assigned = 0;
     let created = 0;
+    let skipped = 0;
+    const allSlotValues: Array<{ containerId: string; rack: number; slot: number; minerId: string }> = [];
 
-    const batchSize = 100;
-    for (let batchStart = 0; batchStart < allMappings.length; batchStart += batchSize) {
-      const batch = allMappings.slice(batchStart, batchStart + batchSize);
+    const minerBatchSize = 500;
+    for (let batchStart = 0; batchStart < allMappings.length; batchStart += minerBatchSize) {
+      const batch = allMappings.slice(batchStart, batchStart + minerBatchSize);
       const minersToCreate: Array<{ mapping: typeof batch[0]; container: typeof allContainers[0] }> = [];
-      const minersToAssign: Array<{ mapping: typeof batch[0]; container: typeof allContainers[0]; miner: Miner }> = [];
 
       for (const mapping of batch) {
         const container = containerMap.get(mapping.containerName);
-        if (!container) continue;
+        if (!container) {
+          skipped++;
+          continue;
+        }
 
         const stripped = normalizeMac(mapping.macAddress);
         const existingMiner = minerByMac.get(stripped);
 
         if (existingMiner) {
-          minersToAssign.push({ mapping, container, miner: existingMiner });
+          const slot = (mapping.row - 1) * 4 + mapping.col;
+          allSlotValues.push({ containerId: container.id, rack: mapping.rack, slot, minerId: existingMiner.id });
+          assigned++;
         } else {
           minersToCreate.push({ mapping, container });
         }
@@ -720,7 +733,7 @@ export class DatabaseStorage implements IStorage {
           const miner = createdMiners[idx];
           const { mapping, container } = minersToCreate[idx];
           const slot = (mapping.row - 1) * 4 + mapping.col;
-          await this.assignMinerToSlot(container.id, mapping.rack, slot, miner.id);
+          allSlotValues.push({ containerId: container.id, rack: mapping.rack, slot, minerId: miner.id });
           if (miner.macAddress) minerByMac.set(normalizeMac(miner.macAddress), miner);
         }
 
@@ -728,20 +741,19 @@ export class DatabaseStorage implements IStorage {
         assigned += createdMiners.length;
       }
 
-      for (const { mapping, container, miner } of minersToAssign) {
-        const slot = (mapping.row - 1) * 4 + mapping.col;
-        await this.assignMinerToSlot(container.id, mapping.rack, slot, miner.id);
-        const location = `${container.name}-R${String(mapping.rack).padStart(2, "0")}-S${String(slot).padStart(2, "0")}`;
-        await this.updateMiner(miner.id, { location });
-        assigned++;
-      }
-
-      if ((batchStart + batchSize) % 1000 === 0 || batchStart + batchSize >= allMappings.length) {
-        console.log(`[autoAssignByMac] Processed ${Math.min(batchStart + batchSize, allMappings.length)}/${allMappings.length} mappings...`);
+      const processed = Math.min(batchStart + minerBatchSize, allMappings.length);
+      if (processed % 2000 === 0 || processed >= allMappings.length) {
+        console.log(`[autoAssignByMac] Processed ${processed}/${allMappings.length} mappings (${created} created, ${skipped} skipped)`);
       }
     }
 
-    console.log(`[autoAssignByMac] Done: ${created} miners created, ${assigned} total assigned`);
+    console.log(`[autoAssignByMac] Inserting ${allSlotValues.length} slot assignments in bulk...`);
+    const slotBatchSize = 1000;
+    for (let i = 0; i < allSlotValues.length; i += slotBatchSize) {
+      const slotBatch = allSlotValues.slice(i, i + slotBatchSize);
+      await db.insert(slotAssignments).values(slotBatch);
+    }
+    console.log(`[autoAssignByMac] Done: ${created} miners created, ${assigned} assigned to slots, ${skipped} skipped (no matching container)`);
 
     return { assigned, created, containersCreated };
   }

@@ -53,6 +53,9 @@ import {
   CheckCircle2,
   MapPin,
   AlertTriangle,
+  ChevronDown,
+  ChevronRight,
+  Search,
 } from "lucide-react";
 import type { Miner, AlertRule, ScanConfig, ScanProgress, Container, ContainerWithSlots, MinerWithLatest } from "@shared/schema";
 import SiteLayoutEditor from "@/components/site-layout-editor";
@@ -494,55 +497,12 @@ function NetworkScanner() {
             ))}
           </div>
         ) : configs && configs.length > 0 ? (
-          <div className="space-y-2">
-            {configs.map((config) => (
-              <div
-                key={config.id}
-                className="flex items-center justify-between gap-3 p-3 rounded-md bg-muted/50"
-                data-testid={`scan-config-${config.id}`}
-              >
-                <div className="min-w-0">
-                  <p className="text-sm font-medium truncate">{config.name}</p>
-                  <p className="text-xs text-muted-foreground font-mono">
-                    {config.startIp} — {config.endIp} : {config.port}
-                  </p>
-                  {config.lastScanResult && (
-                    <p className="text-[11px] text-muted-foreground mt-0.5">
-                      {config.lastScanResult}
-                      {config.lastScanAt && (
-                        <> · {new Date(config.lastScanAt).toLocaleString()}</>
-                      )}
-                    </p>
-                  )}
-                </div>
-                <div className="flex items-center gap-2 shrink-0">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => scanMutation.mutate(config.id)}
-                    disabled={isScanning || scanMutation.isPending}
-                    data-testid={`button-scan-${config.id}`}
-                  >
-                    {scanMutation.isPending && scanMutation.variables === config.id ? (
-                      <Loader2 className="w-3.5 h-3.5 animate-spin mr-1" />
-                    ) : (
-                      <Scan className="w-3.5 h-3.5 mr-1" />
-                    )}
-                    Scan
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={() => deleteMutation.mutate(config.id)}
-                    disabled={deleteMutation.isPending}
-                    data-testid={`button-delete-config-${config.id}`}
-                  >
-                    <Trash2 className="w-4 h-4 text-muted-foreground" />
-                  </Button>
-                </div>
-              </div>
-            ))}
-          </div>
+          <ScanConfigList
+            configs={configs}
+            isScanning={isScanning}
+            scanMutation={scanMutation}
+            deleteMutation={deleteMutation}
+          />
         ) : (
           <div className="text-center py-6 space-y-2">
             <WifiOff className="w-8 h-8 mx-auto text-muted-foreground/50" />
@@ -556,6 +516,199 @@ function NetworkScanner() {
         )}
       </CardContent>
     </Card>
+  );
+}
+
+interface ContainerGroup {
+  container: string;
+  configs: ScanConfig[];
+  totalIps: number;
+}
+
+function ScanConfigList({
+  configs,
+  isScanning,
+  scanMutation,
+  deleteMutation,
+}: {
+  configs: ScanConfig[];
+  isScanning: boolean;
+  scanMutation: any;
+  deleteMutation: any;
+}) {
+  const [search, setSearch] = useState("");
+  const [expandedContainers, setExpandedContainers] = useState<Set<string>>(new Set());
+  const [page, setPage] = useState(0);
+  const PAGE_SIZE = 25;
+
+  const grouped = configs.reduce<Record<string, ScanConfig[]>>((acc, config) => {
+    const match = config.name.match(/^([^\s]+)/);
+    const container = match ? match[1] : "Other";
+    if (!acc[container]) acc[container] = [];
+    acc[container].push(config);
+    return acc;
+  }, {});
+
+  const containerGroups: ContainerGroup[] = Object.entries(grouped)
+    .map(([container, cfgs]) => ({
+      container,
+      configs: cfgs,
+      totalIps: cfgs.reduce((sum, c) => {
+        const startParts = c.startIp.split(".").map(Number);
+        const endParts = c.endIp.split(".").map(Number);
+        return sum + (endParts[3] - startParts[3] + 1);
+      }, 0),
+    }))
+    .sort((a, b) => a.container.localeCompare(b.container, undefined, { numeric: true }));
+
+  const filtered = search
+    ? containerGroups.filter((g) =>
+        g.container.toLowerCase().includes(search.toLowerCase()) ||
+        g.configs.some((c) => c.name.toLowerCase().includes(search.toLowerCase()) ||
+          c.startIp.includes(search) || c.endIp.includes(search))
+      )
+    : containerGroups;
+
+  const totalPages = Math.ceil(filtered.length / PAGE_SIZE);
+  const pageItems = filtered.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
+
+  const toggleExpand = (container: string) => {
+    setExpandedContainers((prev) => {
+      const next = new Set(prev);
+      if (next.has(container)) next.delete(container);
+      else next.add(container);
+      return next;
+    });
+  };
+
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center gap-2">
+        <div className="relative flex-1">
+          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
+          <Input
+            placeholder="Search containers or IP ranges..."
+            value={search}
+            onChange={(e) => { setSearch(e.target.value); setPage(0); }}
+            className="pl-8 h-8 text-sm"
+            data-testid="input-search-scan-configs"
+          />
+        </div>
+        <Badge variant="outline" className="shrink-0 text-xs no-default-active-elevate">
+          {filtered.length} containers · {configs.length} ranges
+        </Badge>
+      </div>
+
+      <div className="space-y-1">
+        {pageItems.map((group) => {
+          const isExpanded = expandedContainers.has(group.container);
+          return (
+            <div key={group.container} className="rounded-md border bg-muted/30" data-testid={`scan-group-${group.container}`}>
+              <button
+                className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-muted/60 transition-colors"
+                onClick={() => toggleExpand(group.container)}
+                data-testid={`button-expand-${group.container}`}
+              >
+                {isExpanded ? (
+                  <ChevronDown className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+                ) : (
+                  <ChevronRight className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+                )}
+                <span className="text-sm font-medium">{group.container}</span>
+                <Badge variant="secondary" className="text-[10px] ml-1 no-default-active-elevate">
+                  {group.configs.length} subnets
+                </Badge>
+                <span className="text-xs text-muted-foreground ml-auto">
+                  {group.totalIps} IPs
+                </span>
+              </button>
+
+              {isExpanded && (
+                <div className="px-3 pb-2 space-y-1 border-t">
+                  {group.configs.map((config) => (
+                    <div
+                      key={config.id}
+                      className="flex items-center justify-between gap-3 py-1.5 px-2 rounded bg-background/50"
+                      data-testid={`scan-config-${config.id}`}
+                    >
+                      <div className="min-w-0">
+                        <p className="text-xs font-medium truncate">{config.name}</p>
+                        <p className="text-[11px] text-muted-foreground font-mono">
+                          {config.startIp} — {config.endIp} : {config.port}
+                        </p>
+                        {config.lastScanResult && (
+                          <p className="text-[10px] text-muted-foreground mt-0.5">
+                            {config.lastScanResult}
+                            {config.lastScanAt && (
+                              <> · {new Date(config.lastScanAt).toLocaleString()}</>
+                            )}
+                          </p>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-1 shrink-0">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="h-7 text-xs"
+                          onClick={() => scanMutation.mutate(config.id)}
+                          disabled={isScanning || scanMutation.isPending}
+                          data-testid={`button-scan-${config.id}`}
+                        >
+                          {scanMutation.isPending && scanMutation.variables === config.id ? (
+                            <Loader2 className="w-3 h-3 animate-spin mr-1" />
+                          ) : (
+                            <Scan className="w-3 h-3 mr-1" />
+                          )}
+                          Scan
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-7 w-7"
+                          onClick={() => deleteMutation.mutate(config.id)}
+                          disabled={deleteMutation.isPending}
+                          data-testid={`button-delete-config-${config.id}`}
+                        >
+                          <Trash2 className="w-3.5 h-3.5 text-muted-foreground" />
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      {totalPages > 1 && (
+        <div className="flex items-center justify-between pt-1">
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-7 text-xs"
+            onClick={() => setPage(Math.max(0, page - 1))}
+            disabled={page === 0}
+            data-testid="button-scan-prev-page"
+          >
+            Previous
+          </Button>
+          <span className="text-xs text-muted-foreground">
+            Page {page + 1} of {totalPages}
+          </span>
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-7 text-xs"
+            onClick={() => setPage(Math.min(totalPages - 1, page + 1))}
+            disabled={page >= totalPages - 1}
+            data-testid="button-scan-next-page"
+          >
+            Next
+          </Button>
+        </div>
+      )}
+    </div>
   );
 }
 

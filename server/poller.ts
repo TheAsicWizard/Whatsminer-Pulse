@@ -32,7 +32,11 @@ async function processMiner(miner: any, rules: any[]) {
       ...data,
     };
 
-    await db.insert(minerSnapshots).values(snap);
+    const [inserted] = await db.insert(minerSnapshots).values(snap).returning({ id: minerSnapshots.id });
+
+    if (inserted) {
+      await db.update(miners).set({ latestSnapshotId: inserted.id }).where(eq(miners.id, miner.id));
+    }
 
     for (const rule of rules) {
       const metricValue = (snap as any)[rule.metric];

@@ -628,10 +628,10 @@ export class DatabaseStorage implements IStorage {
 
   async getMinerByMac(macAddress: string): Promise<Miner | undefined> {
     const stripped = normalizeMac(macAddress);
-    const allMiners = await db.select().from(miners);
-    return allMiners.find(
-      (m) => m.macAddress && normalizeMac(m.macAddress) === stripped
+    const results = await db.select().from(miners).where(
+      sql`replace(replace(lower(${miners.macAddress}), ':', ''), '-', '') = ${stripped}`
     );
+    return results[0];
   }
 
   async autoAssignByMac(): Promise<{ assigned: number; created: number; containersCreated: number }> {

@@ -647,22 +647,6 @@ export async function registerRoutes(
       });
 
       const totalContainers = containerNames.length;
-      const prompt = `You are analyzing a site layout image of a mining facility. The image shows rectangular shipping containers arranged in groups/rows, each labeled with a name like C000, C001, C210, etc.
-
-Your task: Read the container labels visible in the image and determine each container's position as percentage coordinates (0-100 for both x and y, where 0,0 is the top-left corner of the image and 100,100 is the bottom-right).
-
-There are ${totalContainers} containers total, named: ${containerNames.slice(0, 15).join(", ")}, ... ${containerNames.slice(-10).join(", ")}
-
-For each container you can identify in the image:
-- Read its label text (e.g. "C210", "C001")
-- Estimate x: horizontal position as percentage (0=left edge, 100=right edge)
-- Estimate y: vertical position as percentage (0=top edge, 100=bottom edge)
-- Estimate rotation: angle in degrees the container row is rotated (0=horizontal, positive=clockwise). Containers in diagonal rows share the same rotation angle.
-
-IMPORTANT: Read the actual text labels on the containers. Do NOT guess or make up names. Only include containers whose labels you can actually read in the image.
-
-Return ONLY a valid JSON array. No explanation, no markdown code fences.
-Example: [{"name":"C210","x":85.2,"y":54.1,"rotation":0},{"name":"C001","x":12.4,"y":62.0,"rotation":-35}]`;
 
       const base64Match = imageData.match(/^data:([^;]+);base64,(.+)$/);
       if (!base64Match) {
@@ -671,9 +655,43 @@ Example: [{"name":"C210","x":85.2,"y":54.1,"rotation":0},{"name":"C001","x":12.4
       const mediaType = base64Match[1] as "image/png" | "image/jpeg" | "image/gif" | "image/webp";
       const base64Data = base64Match[2];
 
-      const response = await anthropic.messages.create({
+      const structurePrompt = `Analyze this site layout image of a mining facility. The image shows rectangular shipping containers arranged in distinct groups/regions. Each container has a text label like "C000", "C001", "C210", etc.
+
+Your task: Identify the distinct GROUPS of containers visible in the image. For each group, provide:
+
+1. "boundingBox": The rectangular area containing this group, as percentage coordinates (0-100). Format: {"x1": left%, "y1": top%, "x2": right%, "y2": bottom%}
+2. "rotation": The angle (in degrees) that containers in this group are rotated. 0 = horizontal, negative = rotated counterclockwise. Use 325 for diagonal groups going from lower-left to upper-right.
+3. "rows": Number of rows of containers in this group
+4. "containersPerRow": Approximate number of containers per row
+5. "readableLabels": Array of any container labels you can actually read from the image in this group. For each, include the name and its approximate position. Format: [{"name": "C210", "x": 85, "y": 54}]
+6. "description": Brief description of where this group is in the image
+
+Also determine the overall ordering: which group has the lowest-numbered containers and which has the highest.
+
+There are ${totalContainers} containers total. Container names are: ${containerNames.slice(0, 5).join(", ")} through ${containerNames.slice(-3).join(", ")}.
+
+Return ONLY valid JSON with this structure (no explanation, no markdown):
+{
+  "groups": [
+    {
+      "id": 1,
+      "description": "Upper-left diagonal section",
+      "boundingBox": {"x1": 5, "y1": 30, "x2": 45, "y2": 75},
+      "rotation": 325,
+      "rows": 6,
+      "containersPerRow": 14,
+      "readableLabels": [{"name": "C000", "x": 5, "y": 54}],
+      "containerOrder": "first"
+    }
+  ],
+  "totalVisibleContainers": 284,
+  "orderingNotes": "Containers are numbered starting from the diagonal group on the left, then continuing in horizontal rows on the right"
+}`;
+
+      console.log("Phase 1: Asking Claude to analyze site layout structure...");
+      const structureResponse = await anthropic.messages.create({
         model: "claude-sonnet-4-6",
-        max_tokens: 16000,
+        max_tokens: 8000,
         messages: [
           {
             role: "user",
@@ -686,40 +704,200 @@ Example: [{"name":"C210","x":85.2,"y":54.1,"rotation":0},{"name":"C001","x":12.4
                   data: base64Data,
                 },
               },
-              { type: "text", text: prompt },
+              { type: "text", text: structurePrompt },
             ],
           },
         ],
       });
 
-      const content = response.content[0]?.type === "text" ? response.content[0].text : "";
-      console.log("Claude detect response length:", content.length, "chars. First 300:", content.substring(0, 300));
+      const structureContent = structureResponse.content[0]?.type === "text" ? structureResponse.content[0].text : "";
+      console.log("Phase 1 response length:", structureContent.length, "chars");
+      console.log("Phase 1 response:", structureContent.substring(0, 1000));
 
-      let jsonStr = content.trim();
-      const codeBlockMatch = jsonStr.match(/```(?:json)?\s*([\s\S]*?)```/);
-      if (codeBlockMatch) {
-        jsonStr = codeBlockMatch[1].trim();
+      let structureJsonStr = structureContent.trim();
+      const structureCodeBlock = structureJsonStr.match(/```(?:json)?\s*([\s\S]*?)```/);
+      if (structureCodeBlock) {
+        structureJsonStr = structureCodeBlock[1].trim();
       }
 
-      let detectedPositions: Array<{ name: string; x: number; y: number; rotation: number }>;
+      interface DetectedGroup {
+        id: number;
+        description: string;
+        boundingBox: { x1: number; y1: number; x2: number; y2: number };
+        rotation: number;
+        rows: number;
+        containersPerRow: number;
+        readableLabels: Array<{ name: string; x: number; y: number }>;
+        containerOrder?: string;
+      }
+
+      let structureData: { groups: DetectedGroup[]; totalVisibleContainers?: number; orderingNotes?: string };
       try {
-        detectedPositions = JSON.parse(jsonStr);
+        structureData = JSON.parse(structureJsonStr);
       } catch (parseErr) {
-        console.error("AI response parse error. Raw:", content.substring(0, 2000));
+        console.error("Phase 1 parse error. Raw:", structureContent.substring(0, 2000));
         return res.status(500).json({
-          message: "AI returned invalid JSON. Try using the Wolf Hollow template instead.",
-          raw: content.substring(0, 500),
+          message: "AI could not analyze the image structure. Try the Wolf Hollow template instead.",
+          raw: structureContent.substring(0, 500),
         });
       }
 
-      if (!Array.isArray(detectedPositions)) {
-        return res.status(500).json({ message: "AI response was not an array." });
+      if (!structureData.groups || !Array.isArray(structureData.groups) || structureData.groups.length === 0) {
+        return res.status(500).json({ message: "AI did not identify any container groups in the image." });
       }
 
-      console.log(`AI returned ${detectedPositions.length} positions.`);
+      console.log(`Phase 1: Identified ${structureData.groups.length} groups. Notes: ${structureData.orderingNotes || "none"}`);
+      for (const g of structureData.groups) {
+        console.log(`  Group ${g.id}: ${g.description}, bbox=(${g.boundingBox.x1},${g.boundingBox.y1})-(${g.boundingBox.x2},${g.boundingBox.y2}), rotation=${g.rotation}, ${g.rows}x${g.containersPerRow}, labels=${g.readableLabels?.length || 0}`);
+      }
 
-      const validPositions = detectedPositions
-        .filter((p) => p.name && typeof p.x === "number" && typeof p.y === "number" && containerMap.has(p.name))
+      console.log("Phase 2: Validating and distributing containers across detected groups...");
+
+      const validGroups = structureData.groups
+        .filter((g) => {
+          const bb = g.boundingBox;
+          if (!bb || typeof bb.x1 !== "number" || typeof bb.y1 !== "number" || typeof bb.x2 !== "number" || typeof bb.y2 !== "number") return false;
+          if (bb.x1 >= bb.x2 || bb.y1 >= bb.y2) return false;
+          if (bb.x1 < 0 || bb.x2 > 100 || bb.y1 < 0 || bb.y2 > 100) return false;
+          if (!g.rows || g.rows <= 0 || !g.containersPerRow || g.containersPerRow <= 0) return false;
+          return true;
+        })
+        .sort((a, b) => {
+          const aLabels = (a.readableLabels || []).filter(l => l.name && l.name.match(/^C\d+$/));
+          const bLabels = (b.readableLabels || []).filter(l => l.name && l.name.match(/^C\d+$/));
+          const aMin = aLabels.length > 0 ? Math.min(...aLabels.map(l => parseInt(l.name.replace("C", "")))) : 9999;
+          const bMin = bLabels.length > 0 ? Math.min(...bLabels.map(l => parseInt(l.name.replace("C", "")))) : 9999;
+          if (aMin !== bMin) return aMin - bMin;
+          if (a.containerOrder === "first") return -1;
+          if (b.containerOrder === "first") return 1;
+          return (a.boundingBox.x1 + a.boundingBox.y1) - (b.boundingBox.x1 + b.boundingBox.y1);
+        });
+
+      if (validGroups.length === 0) {
+        return res.status(500).json({ message: "AI did not return valid container group data. Try the Wolf Hollow template." });
+      }
+
+      const rawGroupCapacities = validGroups.map(g => g.rows * g.containersPerRow);
+      const totalRawCapacity = rawGroupCapacities.reduce((s, c) => s + c, 0);
+
+      const groupAllocations: number[] = [];
+      let allocated = 0;
+      for (let i = 0; i < validGroups.length; i++) {
+        if (i === validGroups.length - 1) {
+          groupAllocations.push(totalContainers - allocated);
+        } else {
+          const share = Math.round((rawGroupCapacities[i] / totalRawCapacity) * totalContainers);
+          groupAllocations.push(share);
+          allocated += share;
+        }
+      }
+
+      function generateDiagonalRow(
+        count: number,
+        x1: number, y1: number,
+        x2: number, y2: number,
+        rotation: number,
+        names: string[]
+      ): Array<{ name: string; x: number; y: number; rotation: number }> {
+        const result: Array<{ name: string; x: number; y: number; rotation: number }> = [];
+        for (let i = 0; i < count && i < names.length; i++) {
+          const t = count > 1 ? i / (count - 1) : 0.5;
+          result.push({
+            name: names[i],
+            x: Math.max(1, Math.min(99, x1 + t * (x2 - x1))),
+            y: Math.max(1, Math.min(99, y1 + t * (y2 - y1))),
+            rotation,
+          });
+        }
+        return result;
+      }
+
+      function generateHorizontalRow(
+        count: number,
+        xStart: number, xEnd: number,
+        y: number,
+        rotation: number,
+        names: string[]
+      ): Array<{ name: string; x: number; y: number; rotation: number }> {
+        const result: Array<{ name: string; x: number; y: number; rotation: number }> = [];
+        for (let i = 0; i < count && i < names.length; i++) {
+          const t = count > 1 ? i / (count - 1) : 0.5;
+          result.push({
+            name: names[i],
+            x: Math.max(1, Math.min(99, xStart + t * (xEnd - xStart))),
+            y: Math.max(1, Math.min(99, y)),
+            rotation,
+          });
+        }
+        return result;
+      }
+
+      const allPositions: Array<{ name: string; x: number; y: number; rotation: number }> = [];
+      let containerIdx = 0;
+
+      for (let gi = 0; gi < validGroups.length; gi++) {
+        const group = validGroups[gi];
+        const containersForGroup = groupAllocations[gi];
+        if (containersForGroup <= 0) continue;
+
+        const bb = group.boundingBox;
+        const rotation = group.rotation || 0;
+        const numRows = Math.max(1, group.rows);
+        const perRow = Math.ceil(containersForGroup / numRows);
+        let placedInGroup = 0;
+
+        const isDiagonal = rotation !== 0 && rotation !== 180 && rotation !== 360;
+
+        for (let row = 0; row < numRows && placedInGroup < containersForGroup && containerIdx < totalContainers; row++) {
+          const remaining = containersForGroup - placedInGroup;
+          const rowCount = Math.min(perRow, remaining);
+          if (rowCount <= 0) break;
+
+          const rowFraction = numRows > 1 ? row / (numRows - 1) : 0.5;
+          const names = containerNames.slice(containerIdx, containerIdx + rowCount);
+
+          if (isDiagonal) {
+            const rowStartX = bb.x1 + rowFraction * (bb.x2 - bb.x1) * 0.15;
+            const rowStartY = bb.y1 + rowFraction * (bb.y2 - bb.y1);
+            const rowEndX = bb.x1 + (bb.x2 - bb.x1) * (0.65 + rowFraction * 0.35);
+            const rowEndY = bb.y1 + rowFraction * (bb.y2 - bb.y1) * 0.4;
+
+            const positions = generateDiagonalRow(rowCount, rowStartX, rowStartY, rowEndX, rowEndY, rotation, names);
+            allPositions.push(...positions);
+          } else {
+            const y = bb.y1 + rowFraction * (bb.y2 - bb.y1);
+            const positions = generateHorizontalRow(rowCount, bb.x1, bb.x2, y, rotation, names);
+            allPositions.push(...positions);
+          }
+
+          placedInGroup += rowCount;
+          containerIdx += rowCount;
+        }
+
+        console.log(`  Group ${gi + 1}: placed ${placedInGroup}/${containersForGroup} containers`);
+      }
+
+      if (containerIdx < totalContainers) {
+        console.log(`Warning: ${totalContainers - containerIdx} containers unplaced, adding to last group`);
+        const lastBb = validGroups[validGroups.length - 1].boundingBox;
+        while (containerIdx < totalContainers) {
+          const i = containerIdx - allPositions.length + (totalContainers - containerIdx);
+          const col = i % 10;
+          const row = Math.floor(i / 10);
+          allPositions.push({
+            name: containerNames[containerIdx],
+            x: Math.max(1, Math.min(99, lastBb.x1 + col * 3)),
+            y: Math.max(1, Math.min(99, lastBb.y2 + 2 + row * 4)),
+            rotation: 0,
+          });
+          containerIdx++;
+        }
+      }
+
+      console.log(`Phase 2: Distributed ${allPositions.length} containers across ${validGroups.length} groups.`);
+
+      const validPositions = allPositions
+        .filter((p) => containerMap.has(p.name))
         .map((p) => ({
           name: p.name,
           id: containerMap.get(p.name)!.id,
@@ -732,6 +910,8 @@ Example: [{"name":"C210","x":85.2,"y":54.1,"rotation":0},{"name":"C001","x":12.4
         detected: validPositions,
         totalRequested: containerNames.length,
         totalDetected: validPositions.length,
+        groups: structureData.groups.length,
+        orderingNotes: structureData.orderingNotes,
       });
     } catch (err: any) {
       console.error("AI detect error:", err);

@@ -77,7 +77,7 @@ export interface IStorage {
   bulkInsertMacLocationMappings(mappings: InsertMacLocationMapping[]): Promise<number>;
   clearMacLocationMappings(): Promise<void>;
   getMinerByMac(macAddress: string): Promise<Miner | undefined>;
-  autoAssignByMac(): Promise<{ assigned: number; containersCreated: number }>;
+  autoAssignByMac(): Promise<{ assigned: number; created: number; containersCreated: number }>;
 
   getSiteSettings(): Promise<SiteSettings | undefined>;
   updateSiteSettings(data: Partial<SiteSettings>): Promise<SiteSettings>;
@@ -634,9 +634,9 @@ export class DatabaseStorage implements IStorage {
     );
   }
 
-  async autoAssignByMac(): Promise<{ assigned: number; containersCreated: number }> {
+  async autoAssignByMac(): Promise<{ assigned: number; created: number; containersCreated: number }> {
     const allMappings = await this.getMacLocationMappings();
-    if (allMappings.length === 0) return { assigned: 0, containersCreated: 0 };
+    if (allMappings.length === 0) return { assigned: 0, created: 0, containersCreated: 0 };
 
     const allContainers = await this.getContainers();
     const containerMap = new Map(allContainers.map((c) => [c.name, c]));
@@ -674,37 +674,78 @@ export class DatabaseStorage implements IStorage {
       }
     }
 
-    console.log(`[autoAssignByMac] ${allMappings.length} mappings, ${minerByMac.size} miners with MAC addresses`);
+    console.log(`[autoAssignByMac] ${allMappings.length} mappings, ${minerByMac.size} existing miners with MAC addresses`);
 
     let assigned = 0;
-    let noMatch = 0;
+    let created = 0;
 
-    for (const mapping of allMappings) {
-      const container = containerMap.get(mapping.containerName);
-      if (!container) continue;
+    const batchSize = 100;
+    for (let batchStart = 0; batchStart < allMappings.length; batchStart += batchSize) {
+      const batch = allMappings.slice(batchStart, batchStart + batchSize);
+      const minersToCreate: Array<{ mapping: typeof batch[0]; container: typeof allContainers[0] }> = [];
+      const minersToAssign: Array<{ mapping: typeof batch[0]; container: typeof allContainers[0]; miner: Miner }> = [];
 
-      const stripped = normalizeMac(mapping.macAddress);
-      const miner = minerByMac.get(stripped);
-      if (!miner) {
-        noMatch++;
-        continue;
+      for (const mapping of batch) {
+        const container = containerMap.get(mapping.containerName);
+        if (!container) continue;
+
+        const stripped = normalizeMac(mapping.macAddress);
+        const existingMiner = minerByMac.get(stripped);
+
+        if (existingMiner) {
+          minersToAssign.push({ mapping, container, miner: existingMiner });
+        } else {
+          minersToCreate.push({ mapping, container });
+        }
       }
 
-      const slot = (mapping.row - 1) * 4 + mapping.col;
+      if (minersToCreate.length > 0) {
+        const newMinerValues = minersToCreate.map(({ mapping, container }) => {
+          const location = `${container.name}-R${String(mapping.rack).padStart(2, "0")}-${mapping.row}.${mapping.col}`;
+          return {
+            name: `${container.name}-R${String(mapping.rack).padStart(2, "0")}-S${String((mapping.row - 1) * 4 + mapping.col).padStart(2, "0")}`,
+            ipAddress: "",
+            macAddress: mapping.macAddress,
+            model: mapping.minerType || "WhatsMiner",
+            status: "offline" as const,
+            source: "csv" as const,
+            location,
+          };
+        });
 
-      await this.assignMinerToSlot(container.id, mapping.rack, slot, miner.id);
+        const createdMiners = await db.insert(miners).values(newMinerValues).returning();
 
-      const location = `${container.name}-R${String(mapping.rack).padStart(2, "0")}-${mapping.row}.${mapping.col}`;
-      await this.updateMiner(miner.id, { location });
+        const slotValues = createdMiners.map((miner, idx) => {
+          const { mapping, container } = minersToCreate[idx];
+          const slot = (mapping.row - 1) * 4 + mapping.col;
+          return { containerId: container.id, rack: mapping.rack, slot, minerId: miner.id };
+        });
+        await db.insert(slotAssignments).values(slotValues).onConflictDoNothing();
 
-      assigned++;
+        created += createdMiners.length;
+        assigned += createdMiners.length;
+
+        for (const m of createdMiners) {
+          if (m.macAddress) minerByMac.set(normalizeMac(m.macAddress), m);
+        }
+      }
+
+      for (const { mapping, container, miner } of minersToAssign) {
+        const slot = (mapping.row - 1) * 4 + mapping.col;
+        await this.assignMinerToSlot(container.id, mapping.rack, slot, miner.id);
+        const location = `${container.name}-R${String(mapping.rack).padStart(2, "0")}-${mapping.row}.${mapping.col}`;
+        await this.updateMiner(miner.id, { location });
+        assigned++;
+      }
+
+      if ((batchStart + batchSize) % 1000 === 0 || batchStart + batchSize >= allMappings.length) {
+        console.log(`[autoAssignByMac] Processed ${Math.min(batchStart + batchSize, allMappings.length)}/${allMappings.length} mappings...`);
+      }
     }
 
-    if (noMatch > 0) {
-      console.log(`[autoAssignByMac] ${noMatch} mappings had no matching miner (MAC not found in scanned miners)`);
-    }
+    console.log(`[autoAssignByMac] Done: ${created} miners created, ${assigned} total assigned`);
 
-    return { assigned, containersCreated };
+    return { assigned, created, containersCreated };
   }
 
   async getSiteSettings(): Promise<SiteSettings | undefined> {

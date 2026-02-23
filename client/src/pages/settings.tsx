@@ -103,12 +103,13 @@ function ForemanImport() {
       const res = await apiRequest("POST", "/api/containers/auto-assign-mac");
       return res.json();
     },
-    onSuccess: (data: { assigned: number; containersCreated: number }) => {
+    onSuccess: (data: { assigned: number; created: number; containersCreated: number }) => {
       queryClient.invalidateQueries({ queryKey: ["/api/containers"] });
       queryClient.invalidateQueries({ queryKey: ["/api/containers/summary"] });
       queryClient.invalidateQueries({ predicate: (q) => (q.queryKey[0] as string)?.startsWith("/api/miners") });
       const parts = [];
       if (data.containersCreated > 0) parts.push(`Created ${data.containersCreated} containers`);
+      if (data.created > 0) parts.push(`Created ${data.created} miners from CSV`);
       parts.push(`Assigned ${data.assigned} miners to their physical positions`);
       toast({ title: parts.join(". ") });
     },

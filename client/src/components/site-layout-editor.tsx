@@ -43,7 +43,7 @@ function detectRotationForPosition(xPercent: number, yPercent: number): number {
   if (xPercent < 45 && yPercent > 28) {
     const diagonalBoundaryX = 10 + (yPercent - 30) * 0.85;
     if (xPercent < diagonalBoundaryX + 12 && yPercent > 28 && yPercent < 80) {
-      return 325;
+      return 35;
     }
   }
   return 0;

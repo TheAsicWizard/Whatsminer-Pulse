@@ -316,53 +316,48 @@ export function ContainerSummaryMap({ containers, onAssignSlot, onSwapSlot, onUn
         />
 
         {useCustomLayout ? (
-          <>
-            <div
-              className="absolute"
-              style={{
-                width: `${LAYOUT_WIDTH}px`,
-                height: `${LAYOUT_HEIGHT}px`,
-                transform: `translate(${pan.x}px, ${pan.y}px) scale(${currentZoom})`,
-                transformOrigin: "0 0",
-              }}
-            >
-              {siteSettings?.backgroundImage && (
-                <img
-                  src={siteSettings.backgroundImage}
-                  alt="Site map background"
-                  className="absolute inset-0 w-full h-full object-cover"
-                  style={{ opacity: 0.35 }}
-                  draggable={false}
-                />
-              )}
-            </div>
-            <div className="absolute inset-0 pointer-events-none" style={{ zIndex: 10 }}>
-              {containers.map((container) => {
-                if (container.layoutX == null || container.layoutY == null) return null;
-                const rotation = container.layoutRotation ?? 0;
-                const pixelX = pan.x + (container.layoutX / 100) * LAYOUT_WIDTH * currentZoom;
-                const pixelY = pan.y + (container.layoutY / 100) * LAYOUT_HEIGHT * currentZoom;
-                return (
-                  <div
-                    key={container.id}
-                    className="absolute pointer-events-auto"
-                    style={{
-                      left: `${pixelX}px`,
-                      top: `${pixelY}px`,
-                      transform: `translate(-50%, -50%) rotate(${rotation}deg)`,
-                      transformOrigin: "center center",
-                    }}
-                  >
-                    <ContainerBlock
-                      container={container}
-                      onClick={() => setSelectedContainer(container)}
-                      compact
-                    />
-                  </div>
-                );
-              })}
-            </div>
-          </>
+          <div
+            className="absolute"
+            style={{
+              width: `${LAYOUT_WIDTH}px`,
+              height: `${LAYOUT_HEIGHT}px`,
+              transform: `translate(${pan.x}px, ${pan.y}px) scale(${currentZoom})`,
+              transformOrigin: "0 0",
+            }}
+          >
+            {siteSettings?.backgroundImage && (
+              <img
+                src={siteSettings.backgroundImage}
+                alt="Site map background"
+                className="absolute inset-0 w-full h-full object-cover"
+                style={{ opacity: 0.35 }}
+                draggable={false}
+              />
+            )}
+            {containers.map((container) => {
+              if (container.layoutX == null || container.layoutY == null) return null;
+              const rotation = container.layoutRotation ?? 0;
+              return (
+                <div
+                  key={container.id}
+                  className="absolute"
+                  style={{
+                    left: `${container.layoutX}%`,
+                    top: `${container.layoutY}%`,
+                    transform: `translate(-50%, -50%) rotate(${rotation}deg)`,
+                    transformOrigin: "center center",
+                    zIndex: 10,
+                  }}
+                >
+                  <ContainerBlock
+                    container={container}
+                    onClick={() => setSelectedContainer(container)}
+                    compact
+                  />
+                </div>
+              );
+            })}
+          </div>
         ) : (
           <div
             className="absolute"

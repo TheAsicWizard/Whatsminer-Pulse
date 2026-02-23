@@ -1,7 +1,8 @@
 import { db } from "./db";
-import { miners, minerSnapshots, alertRules, alerts, containers, slotAssignments } from "@shared/schema";
-import { sql } from "drizzle-orm";
+import { miners, minerSnapshots, alertRules, alerts, containers, slotAssignments, siteSettings } from "@shared/schema";
+import { sql, eq } from "drizzle-orm";
 import { log } from "./index";
+import containerLayouts from "./container-layouts.json";
 
 const AIR_COOLED_CONTAINERS = [
   { name: "C188", model: "WhatsMiner M60S", capacity: 486, ipStart: "10.31.0.1", ipEnd: "10.31.3.255" },
@@ -287,5 +288,22 @@ export async function seedDatabase() {
     await db.insert(alerts).values(alertValues);
   }
 
-  log(`Seed complete: ${createdContainers.length} containers, ${totalMinersCreated} miners, ${alertValues.length} alerts`, "seed");
+  const layoutMap = containerLayouts.layouts as Record<string, { x: number; y: number; rotation: number }>;
+  let layoutsApplied = 0;
+  for (const containerDef of createdContainers) {
+    const layout = layoutMap[containerDef.name];
+    if (layout) {
+      await db.update(containers)
+        .set({ layoutX: layout.x, layoutY: layout.y, layoutRotation: layout.rotation })
+        .where(eq(containers.id, containerDef.id));
+      layoutsApplied++;
+    }
+  }
+
+  await db.insert(siteSettings).values({
+    useCustomLayout: true,
+    containerScale: containerLayouts.containerScale,
+  });
+
+  log(`Seed complete: ${createdContainers.length} containers, ${totalMinersCreated} miners, ${alertValues.length} alerts, ${layoutsApplied} layouts applied`, "seed");
 }

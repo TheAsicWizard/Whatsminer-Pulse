@@ -5,59 +5,65 @@ export { wolfHollowMapUrl };
 export type TemplatePosition = { x: number; y: number; rotation: number };
 
 const WOLF_HOLLOW_POSITIONS: Record<string, TemplatePosition> = {
-  C188: { x: 48, y: 10, rotation: 0 },
-  C209: { x: 54.5, y: 10, rotation: 0 },
-  C223: { x: 61, y: 10, rotation: 0 },
-  C224: { x: 67.5, y: 10, rotation: 0 },
-  C226: { x: 74, y: 10, rotation: 0 },
-  C239: { x: 80.5, y: 10, rotation: 0 },
-  C241: { x: 87, y: 10, rotation: 0 },
-  C242: { x: 93.5, y: 10, rotation: 0 },
+  // Right section: 4 rows × 8 columns (32 containers, 0° rotation)
+  // Row 1
+  C188: { x: 38, y: 8, rotation: 0 },
+  C209: { x: 45, y: 8, rotation: 0 },
+  C223: { x: 52, y: 8, rotation: 0 },
+  C224: { x: 59, y: 8, rotation: 0 },
+  C226: { x: 66, y: 8, rotation: 0 },
+  C239: { x: 73, y: 8, rotation: 0 },
+  C241: { x: 80, y: 8, rotation: 0 },
+  C242: { x: 87, y: 8, rotation: 0 },
+  // Row 2
+  C245: { x: 38, y: 18, rotation: 0 },
+  C247: { x: 45, y: 18, rotation: 0 },
+  C248: { x: 52, y: 18, rotation: 0 },
+  C249: { x: 59, y: 18, rotation: 0 },
+  C250: { x: 66, y: 18, rotation: 0 },
+  C251: { x: 73, y: 18, rotation: 0 },
+  C252: { x: 80, y: 18, rotation: 0 },
+  C253: { x: 87, y: 18, rotation: 0 },
+  // Row 3
+  C254: { x: 38, y: 28, rotation: 0 },
+  C255: { x: 45, y: 28, rotation: 0 },
+  C256: { x: 52, y: 28, rotation: 0 },
+  C257: { x: 59, y: 28, rotation: 0 },
+  C258: { x: 66, y: 28, rotation: 0 },
+  C259: { x: 73, y: 28, rotation: 0 },
+  C260: { x: 80, y: 28, rotation: 0 },
+  C261: { x: 87, y: 28, rotation: 0 },
+  // Row 4
+  C262: { x: 38, y: 38, rotation: 0 },
+  C263: { x: 45, y: 38, rotation: 0 },
+  C264: { x: 52, y: 38, rotation: 0 },
+  C265: { x: 59, y: 38, rotation: 0 },
+  C266: { x: 66, y: 38, rotation: 0 },
+  C267: { x: 73, y: 38, rotation: 0 },
+  C268: { x: 80, y: 38, rotation: 0 },
+  C269: { x: 87, y: 38, rotation: 0 },
 
-  C245: { x: 48, y: 18, rotation: 0 },
-  C247: { x: 54.5, y: 18, rotation: 0 },
-  C248: { x: 61, y: 18, rotation: 0 },
-  C249: { x: 67.5, y: 18, rotation: 0 },
-  C250: { x: 74, y: 18, rotation: 0 },
-  C251: { x: 80.5, y: 18, rotation: 0 },
-  C252: { x: 87, y: 18, rotation: 0 },
-  C253: { x: 93.5, y: 18, rotation: 0 },
-
-  C254: { x: 48, y: 26, rotation: 0 },
-  C255: { x: 54.5, y: 26, rotation: 0 },
-  C256: { x: 61, y: 26, rotation: 0 },
-  C257: { x: 67.5, y: 26, rotation: 0 },
-  C258: { x: 74, y: 26, rotation: 0 },
-  C259: { x: 80.5, y: 26, rotation: 0 },
-  C260: { x: 87, y: 26, rotation: 0 },
-  C261: { x: 93.5, y: 26, rotation: 0 },
-
-  C262: { x: 48, y: 34, rotation: 0 },
-  C263: { x: 54.5, y: 34, rotation: 0 },
-  C264: { x: 61, y: 34, rotation: 0 },
-  C265: { x: 67.5, y: 34, rotation: 0 },
-  C266: { x: 74, y: 34, rotation: 0 },
-  C267: { x: 80.5, y: 34, rotation: 0 },
-  C268: { x: 87, y: 34, rotation: 0 },
-  C269: { x: 93.5, y: 34, rotation: 0 },
-
-  C270: { x: 29, y: 36, rotation: 315 },
-  C271: { x: 25, y: 40, rotation: 315 },
-  C272: { x: 21, y: 44, rotation: 315 },
-  C273: { x: 17, y: 48, rotation: 315 },
-  C274: { x: 13, y: 52, rotation: 315 },
-
-  C275: { x: 31, y: 44, rotation: 315 },
-  C276: { x: 27, y: 48, rotation: 315 },
-  C277: { x: 23, y: 52, rotation: 315 },
-  C278: { x: 19, y: 56, rotation: 315 },
-  C279: { x: 15, y: 60, rotation: 315 },
-
-  C280: { x: 33, y: 52, rotation: 315 },
-  C281: { x: 29, y: 56, rotation: 315 },
-  C282: { x: 25, y: 60, rotation: 315 },
-  C283: { x: 21, y: 64, rotation: 315 },
-  C284: { x: 17, y: 68, rotation: 315 },
+  // Left section: 3 diagonal rows × 5 (15 containers, 315° rotation)
+  // Each diagonal row runs upper-right to lower-left with step (-5%, +8%)
+  // Rows offset by (+4%, +9%) from each other
+  // Diagonal row 1 (C270-C274)
+  C270: { x: 24, y: 20, rotation: 315 },
+  C271: { x: 19, y: 28, rotation: 315 },
+  C272: { x: 14, y: 36, rotation: 315 },
+  C273: { x: 9, y: 44, rotation: 315 },
+  C274: { x: 4, y: 52, rotation: 315 },
+  // Diagonal row 2 (C275-C279)
+  C275: { x: 28, y: 29, rotation: 315 },
+  C276: { x: 23, y: 37, rotation: 315 },
+  C277: { x: 18, y: 45, rotation: 315 },
+  C278: { x: 13, y: 53, rotation: 315 },
+  C279: { x: 8, y: 61, rotation: 315 },
+  // Diagonal row 3 (C280-C284)
+  C280: { x: 32, y: 38, rotation: 315 },
+  C281: { x: 27, y: 46, rotation: 315 },
+  C282: { x: 22, y: 54, rotation: 315 },
+  C283: { x: 17, y: 62, rotation: 315 },
+  C284: { x: 12, y: 70, rotation: 315 },
 };
 
 export function getWolfHollowTemplate(): Map<string, TemplatePosition> {

@@ -270,9 +270,7 @@ export function ContainerSummaryMap({ containers, onAssignSlot, onSwapSlot, onUn
         className="relative overflow-hidden rounded-lg border border-border/50 select-none"
         style={{
           height: "420px",
-          background: useCustomLayout && siteSettings?.backgroundImage
-            ? `url(${siteSettings.backgroundImage}) center/contain no-repeat, linear-gradient(135deg, hsl(220, 15%, 8%) 0%, hsl(220, 12%, 11%) 50%, hsl(220, 15%, 8%) 100%)`
-            : "linear-gradient(135deg, hsl(220, 15%, 8%) 0%, hsl(220, 12%, 11%) 50%, hsl(220, 15%, 8%) 100%)",
+          background: "linear-gradient(135deg, hsl(220, 15%, 8%) 0%, hsl(220, 12%, 11%) 50%, hsl(220, 15%, 8%) 100%)",
           cursor: isPanning ? "grabbing" : "grab",
         }}
         onMouseDown={handleMouseDown}
@@ -281,19 +279,17 @@ export function ContainerSummaryMap({ containers, onAssignSlot, onSwapSlot, onUn
         onMouseLeave={handleMouseUp}
         data-testid="site-map-viewport"
       >
-        {!useCustomLayout && (
-          <div
-            className="absolute inset-0"
-            style={{
-              backgroundImage: `
-                radial-gradient(circle at 1px 1px, hsl(220, 10%, 18%) 1px, transparent 0)
-              `,
-              backgroundSize: `${20 * zoom}px ${20 * zoom}px`,
-              backgroundPosition: `${pan.x}px ${pan.y}px`,
-              opacity: 0.4,
-            }}
-          />
-        )}
+        <div
+          className="absolute inset-0"
+          style={{
+            backgroundImage: `
+              radial-gradient(circle at 1px 1px, hsl(220, 10%, 18%) 1px, transparent 0)
+            `,
+            backgroundSize: `${20 * zoom}px ${20 * zoom}px`,
+            backgroundPosition: `${pan.x}px ${pan.y}px`,
+            opacity: 0.4,
+          }}
+        />
 
         {useCustomLayout ? (
           <div
@@ -394,8 +390,8 @@ function ContainerBlock({ container, onClick, compact }: { container: ContainerS
           onClick={(e) => { e.stopPropagation(); onClick(); }}
           className="group relative flex flex-col items-center transition-all duration-200 hover:scale-105"
           style={{
-            width: "100px",
-            height: "68px",
+            width: compact ? "44px" : "100px",
+            height: compact ? "24px" : "68px",
             cursor: "pointer",
           }}
           data-testid={`container-block-${container.id}`}
@@ -414,12 +410,12 @@ function ContainerBlock({ container, onClick, compact }: { container: ContainerS
               }}
             />
 
-            <div className="relative flex flex-col items-center justify-center h-full px-1 gap-0.5">
-              <span className="text-[11px] font-bold font-mono text-white/90 leading-none tracking-wide drop-shadow-sm">
+            <div className={cn("relative flex flex-col items-center justify-center h-full gap-0.5", compact ? "px-0.5" : "px-1")}>
+              <span className={cn("font-bold font-mono text-white/90 leading-none tracking-wide drop-shadow-sm", compact ? "text-[7px]" : "text-[11px]")}>
                 {container.name}
               </span>
 
-              {container.totalAssigned > 0 && (
+              {container.totalAssigned > 0 && !compact && (
                 <>
                   <span className="text-[8px] font-mono text-white/50 leading-none">
                     {container.onlineCount}/{container.totalAssigned}
@@ -433,7 +429,16 @@ function ContainerBlock({ container, onClick, compact }: { container: ContainerS
                 </>
               )}
 
-              {container.totalAssigned === 0 && (
+              {container.totalAssigned > 0 && compact && (
+                <div className="flex w-[80%] h-[2px] rounded-full overflow-hidden bg-black/30">
+                  {onlinePct > 0 && <div className="h-full" style={{ width: `${onlinePct * 100}%`, backgroundColor: "#22c55e" }} />}
+                  {warnPct > 0 && <div className="h-full" style={{ width: `${warnPct * 100}%`, backgroundColor: "#f59e0b" }} />}
+                  {critPct > 0 && <div className="h-full" style={{ width: `${critPct * 100}%`, backgroundColor: "#ef4444" }} />}
+                  {offPct > 0 && <div className="h-full" style={{ width: `${offPct * 100}%`, backgroundColor: "#6b7280" }} />}
+                </div>
+              )}
+
+              {container.totalAssigned === 0 && !compact && (
                 <span className="text-[8px] font-mono text-white/30 leading-none">empty</span>
               )}
             </div>

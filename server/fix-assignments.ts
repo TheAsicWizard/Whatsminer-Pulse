@@ -1,117 +1,144 @@
-import { db } from "./db";
-import { miners, slotAssignments, macLocationMappings, containers } from "@shared/schema";
-import { eq } from "drizzle-orm";
+import pg from "pg";
+
+const pool = new pg.Pool({
+  connectionString: process.env.DATABASE_URL,
+});
 
 function normalizeMac(mac: string): string {
   return mac.replace(/[:\-\.]/g, "").toLowerCase();
 }
 
 async function fixAssignments() {
-  console.log("=== Fix Slot Assignments ===");
+  const client = await pool.connect();
   
-  const allMappings = await db.select().from(macLocationMappings);
-  console.log(`Found ${allMappings.length} MAC mappings`);
-  
-  if (allMappings.length === 0) {
-    console.log("No MAC mappings found. Upload your CSV first, then run this script.");
-    process.exit(1);
-  }
+  try {
+    console.log("=== Fix Slot Assignments ===\n");
 
-  const allContainers = await db.select().from(containers);
-  const containerMap = new Map(allContainers.map(c => [c.name, c]));
-  console.log(`Found ${allContainers.length} containers`);
+    const { rows: mappings } = await client.query(
+      "SELECT mac_address, container_name, rack, row, col, miner_type FROM mac_location_mappings"
+    );
+    console.log(`Found ${mappings.length} MAC mappings`);
 
-  const allMiners = await db.select().from(miners);
-  const minerByMac = new Map<string, typeof allMiners[0]>();
-  for (const m of allMiners) {
-    if (m.macAddress) {
-      minerByMac.set(normalizeMac(m.macAddress), m);
+    if (mappings.length === 0) {
+      console.log("No MAC mappings found. Upload your CSV first via the web UI, then run this script.");
+      process.exit(1);
     }
-  }
-  console.log(`Found ${allMiners.length} miners (${minerByMac.size} with MAC addresses)`);
 
-  await db.delete(slotAssignments);
-  console.log("Cleared all existing slot assignments");
+    const { rows: allContainers } = await client.query("SELECT id, name FROM containers");
+    const containerMap = new Map(allContainers.map((c: any) => [c.name, c.id]));
+    console.log(`Found ${allContainers.length} containers`);
 
-  let assigned = 0;
-  let created = 0;
-  let skipped = 0;
-  const allSlotValues: Array<{ containerId: string; rack: number; slot: number; minerId: string }> = [];
-
-  const batchSize = 500;
-  for (let i = 0; i < allMappings.length; i += batchSize) {
-    const batch = allMappings.slice(i, i + batchSize);
-    const minersToCreate: Array<{ mapping: typeof batch[0]; container: typeof allContainers[0] }> = [];
-
-    for (const mapping of batch) {
-      const container = containerMap.get(mapping.containerName);
-      if (!container) {
-        skipped++;
-        continue;
-      }
-
-      const stripped = normalizeMac(mapping.macAddress);
-      const existingMiner = minerByMac.get(stripped);
-
-      if (existingMiner) {
-        const slot = (mapping.row - 1) * 4 + mapping.col;
-        allSlotValues.push({ containerId: container.id, rack: mapping.rack, slot, minerId: existingMiner.id });
-        assigned++;
-      } else {
-        minersToCreate.push({ mapping, container });
+    const { rows: allMiners } = await client.query("SELECT id, mac_address FROM miners");
+    const minerByMac = new Map<string, string>();
+    for (const m of allMiners) {
+      if (m.mac_address) {
+        minerByMac.set(normalizeMac(m.mac_address), m.id);
       }
     }
+    console.log(`Found ${allMiners.length} miners (${minerByMac.size} with MAC addresses)`);
 
-    if (minersToCreate.length > 0) {
-      const newMinerValues = minersToCreate.map(({ mapping, container }) => {
-        const slot = (mapping.row - 1) * 4 + mapping.col;
-        const location = `${container.name}-R${String(mapping.rack).padStart(2, "0")}-S${String(slot).padStart(2, "0")}`;
-        return {
-          name: location,
-          ipAddress: "",
-          macAddress: mapping.macAddress,
-          model: mapping.minerType || "WhatsMiner",
-          status: "offline" as const,
-          source: "csv" as const,
-          location,
-        };
-      });
+    await client.query("DELETE FROM slot_assignments");
+    console.log("Cleared all existing slot assignments\n");
 
-      const createdMiners = await db.insert(miners).values(newMinerValues).returning();
+    let assigned = 0;
+    let created = 0;
+    let skipped = 0;
+    const slotRows: Array<{ containerId: string; rack: number; slot: number; minerId: string }> = [];
 
-      for (let idx = 0; idx < createdMiners.length; idx++) {
-        const miner = createdMiners[idx];
-        const { mapping, container } = minersToCreate[idx];
-        const slot = (mapping.row - 1) * 4 + mapping.col;
-        allSlotValues.push({ containerId: container.id, rack: mapping.rack, slot, minerId: miner.id });
-        if (miner.macAddress) minerByMac.set(normalizeMac(miner.macAddress), miner);
+    const batchSize = 500;
+    for (let i = 0; i < mappings.length; i += batchSize) {
+      const batch = mappings.slice(i, i + batchSize);
+      const toCreate: Array<{ mapping: any; containerId: string }> = [];
+
+      for (const mapping of batch) {
+        const containerId = containerMap.get(mapping.container_name);
+        if (!containerId) {
+          skipped++;
+          continue;
+        }
+
+        const stripped = normalizeMac(mapping.mac_address);
+        const existingMinerId = minerByMac.get(stripped);
+
+        if (existingMinerId) {
+          const slot = (mapping.row - 1) * 4 + mapping.col;
+          slotRows.push({ containerId, rack: mapping.rack, slot, minerId: existingMinerId });
+          assigned++;
+        } else {
+          toCreate.push({ mapping, containerId });
+        }
       }
 
-      created += createdMiners.length;
-      assigned += createdMiners.length;
+      if (toCreate.length > 0) {
+        const values: string[] = [];
+        const params: any[] = [];
+        let paramIdx = 1;
+
+        for (const { mapping, containerId } of toCreate) {
+          const slot = (mapping.row - 1) * 4 + mapping.col;
+          const cName = mapping.container_name;
+          const location = `${cName}-R${String(mapping.rack).padStart(2, "0")}-S${String(slot).padStart(2, "0")}`;
+          const model = mapping.miner_type || "WhatsMiner";
+
+          values.push(`($${paramIdx}, $${paramIdx + 1}, $${paramIdx + 2}, $${paramIdx + 3}, $${paramIdx + 4}, $${paramIdx + 5}, $${paramIdx + 6})`);
+          params.push(location, "", mapping.mac_address, model, "offline", "csv", location);
+          paramIdx += 7;
+        }
+
+        const insertSQL = `INSERT INTO miners (name, ip_address, mac_address, model, status, source, location) VALUES ${values.join(", ")} RETURNING id, mac_address`;
+        const { rows: newMiners } = await client.query(insertSQL, params);
+
+        for (let idx = 0; idx < newMiners.length; idx++) {
+          const miner = newMiners[idx];
+          const { mapping, containerId } = toCreate[idx];
+          const slot = (mapping.row - 1) * 4 + mapping.col;
+          slotRows.push({ containerId, rack: mapping.rack, slot, minerId: miner.id });
+          if (miner.mac_address) minerByMac.set(normalizeMac(miner.mac_address), miner.id);
+        }
+
+        created += newMiners.length;
+        assigned += newMiners.length;
+      }
+
+      const processed = Math.min(i + batchSize, mappings.length);
+      if (processed % 2000 === 0 || processed >= mappings.length) {
+        console.log(`Processed ${processed}/${mappings.length} mappings (${created} new miners created, ${skipped} skipped)`);
+      }
     }
 
-    const processed = Math.min(i + batchSize, allMappings.length);
-    if (processed % 2000 === 0 || processed >= allMappings.length) {
-      console.log(`Processed ${processed}/${allMappings.length} mappings (${created} new miners, ${skipped} skipped)`);
+    console.log(`\nInserting ${slotRows.length} slot assignments in bulk...`);
+    const slotBatchSize = 1000;
+    for (let i = 0; i < slotRows.length; i += slotBatchSize) {
+      const batch = slotRows.slice(i, i + slotBatchSize);
+      const values: string[] = [];
+      const params: any[] = [];
+      let paramIdx = 1;
+
+      for (const row of batch) {
+        values.push(`($${paramIdx}, $${paramIdx + 1}, $${paramIdx + 2}, $${paramIdx + 3})`);
+        params.push(row.containerId, row.rack, row.slot, row.minerId);
+        paramIdx += 4;
+      }
+
+      await client.query(
+        `INSERT INTO slot_assignments (container_id, rack, slot, miner_id) VALUES ${values.join(", ")}`,
+        params
+      );
+      console.log(`  Inserted batch ${Math.floor(i / slotBatchSize) + 1}/${Math.ceil(slotRows.length / slotBatchSize)}`);
     }
-  }
 
-  console.log(`\nInserting ${allSlotValues.length} slot assignments in bulk...`);
-  const slotBatchSize = 1000;
-  for (let i = 0; i < allSlotValues.length; i += slotBatchSize) {
-    const slotBatch = allSlotValues.slice(i, i + slotBatchSize);
-    await db.insert(slotAssignments).values(slotBatch);
-    console.log(`  Inserted batch ${Math.floor(i / slotBatchSize) + 1}/${Math.ceil(allSlotValues.length / slotBatchSize)}`);
-  }
+    const { rows: verify } = await client.query("SELECT COUNT(*) as cnt FROM slot_assignments");
+    console.log(`\n=== DONE ===`);
+    console.log(`Created: ${created} new miners`);
+    console.log(`Assigned: ${assigned} miners to rack slots`);
+    console.log(`Skipped: ${skipped} (no matching container in database)`);
+    console.log(`Verified: ${verify[0].cnt} slot_assignments in database`);
+    console.log(`\nNow start your server and refresh the browser!`);
 
-  console.log(`\n=== DONE ===`);
-  console.log(`Created: ${created} new miners`);
-  console.log(`Assigned: ${assigned} miners to rack slots`);
-  console.log(`Skipped: ${skipped} (no matching container)`);
-  console.log(`\nRestart your server and refresh the browser to see the results.`);
-  
-  process.exit(0);
+  } finally {
+    client.release();
+    await pool.end();
+  }
 }
 
 fixAssignments().catch((err) => {

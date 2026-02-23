@@ -2,7 +2,7 @@ import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { insertMinerSchema, insertAlertRuleSchema, insertScanConfigSchema, insertContainerSchema, type InsertMacLocationMapping } from "@shared/schema";
-import { ZodError } from "zod";
+import { z, ZodError } from "zod";
 import { scanIpRange, getScanProgress } from "./scanner";
 import multer from "multer";
 
@@ -285,6 +285,15 @@ export async function registerRoutes(
     }
   });
 
+  app.get("/api/containers/list", async (_req, res) => {
+    try {
+      const result = await storage.getContainers();
+      res.json(result);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
   app.get("/api/containers/summary", async (_req, res) => {
     try {
       const result = await storage.getContainersSummary();
@@ -403,6 +412,64 @@ export async function registerRoutes(
       const result = await storage.autoAssignByMac();
       res.json(result);
     } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.get("/api/site-settings", async (_req, res) => {
+    try {
+      const settings = await storage.getSiteSettings();
+      res.json(settings || { backgroundImage: null, useCustomLayout: false });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  const siteSettingsUpdateSchema = z.object({
+    backgroundImage: z.string().nullable().optional(),
+    useCustomLayout: z.boolean().optional(),
+  });
+
+  app.patch("/api/site-settings", async (req, res) => {
+    try {
+      const parsed = siteSettingsUpdateSchema.parse(req.body);
+      const settings = await storage.updateSiteSettings(parsed);
+      res.json(settings);
+    } catch (err: any) {
+      if (err instanceof ZodError) return res.status(400).json({ message: handleZodError(err) });
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post("/api/site-settings/background", upload.single("image"), async (req, res) => {
+    try {
+      if (!req.file) return res.status(400).json({ message: "No image file uploaded" });
+      const base64 = `data:${req.file.mimetype};base64,${req.file.buffer.toString("base64")}`;
+      const settings = await storage.updateSiteSettings({ backgroundImage: base64, useCustomLayout: true });
+      res.json(settings);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  const containerLayoutSchema = z.object({
+    id: z.string(),
+    layoutX: z.number().nullable(),
+    layoutY: z.number().nullable(),
+    layoutRotation: z.number().nullable(),
+  });
+  const containerLayoutsBodySchema = z.object({
+    layouts: z.array(containerLayoutSchema),
+  });
+
+  app.post("/api/containers/layouts", async (req, res) => {
+    try {
+      const { layouts } = containerLayoutsBodySchema.parse(req.body);
+      await storage.updateContainerLayouts(layouts);
+      await storage.updateSiteSettings({ useCustomLayout: true });
+      res.json({ success: true });
+    } catch (err: any) {
+      if (err instanceof ZodError) return res.status(400).json({ message: handleZodError(err) });
       res.status(500).json({ message: err.message });
     }
   });

@@ -8,8 +8,9 @@ import {
   type Container, type InsertContainer, type ContainerWithSlots,
   type SlotAssignment, type InsertSlotAssignment,
   type MacLocationMapping, type InsertMacLocationMapping,
+  type SiteSettings,
   miners, minerSnapshots, alertRules, alerts, scanConfigs,
-  containers, slotAssignments, macLocationMappings,
+  containers, slotAssignments, macLocationMappings, siteSettings,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc, and, sql, gte, lte, inArray, like } from "drizzle-orm";
@@ -76,6 +77,12 @@ export interface IStorage {
   clearMacLocationMappings(): Promise<void>;
   getMinerByMac(macAddress: string): Promise<Miner | undefined>;
   autoAssignByMac(): Promise<{ assigned: number; containersCreated: number }>;
+
+  getSiteSettings(): Promise<SiteSettings | undefined>;
+  updateSiteSettings(data: Partial<SiteSettings>): Promise<SiteSettings>;
+  updateContainerLayout(id: string, layoutX: number | null, layoutY: number | null, layoutRotation: number | null): Promise<Container | undefined>;
+  updateContainerLayouts(layouts: Array<{ id: string; layoutX: number | null; layoutY: number | null; layoutRotation: number | null }>): Promise<void>;
+
   resetAllData(): Promise<void>;
 }
 
@@ -679,6 +686,44 @@ export class DatabaseStorage implements IStorage {
     return { assigned, containersCreated };
   }
 
+  async getSiteSettings(): Promise<SiteSettings | undefined> {
+    const [settings] = await db.select().from(siteSettings).limit(1);
+    return settings;
+  }
+
+  async updateSiteSettings(data: Partial<SiteSettings>): Promise<SiteSettings> {
+    const existing = await this.getSiteSettings();
+    if (existing) {
+      const [updated] = await db.update(siteSettings)
+        .set({ ...data, updatedAt: new Date() })
+        .where(eq(siteSettings.id, existing.id))
+        .returning();
+      return updated;
+    }
+    const [created] = await db.insert(siteSettings)
+      .values({ backgroundImage: data.backgroundImage ?? null, useCustomLayout: data.useCustomLayout ?? false })
+      .returning();
+    return created;
+  }
+
+  async updateContainerLayout(id: string, layoutX: number | null, layoutY: number | null, layoutRotation: number | null): Promise<Container | undefined> {
+    const [updated] = await db.update(containers)
+      .set({ layoutX, layoutY, layoutRotation })
+      .where(eq(containers.id, id))
+      .returning();
+    return updated;
+  }
+
+  async updateContainerLayouts(layouts: Array<{ id: string; layoutX: number | null; layoutY: number | null; layoutRotation: number | null }>): Promise<void> {
+    await db.transaction(async (tx) => {
+      for (const layout of layouts) {
+        await tx.update(containers)
+          .set({ layoutX: layout.layoutX, layoutY: layout.layoutY, layoutRotation: layout.layoutRotation })
+          .where(eq(containers.id, layout.id));
+      }
+    });
+  }
+
   async resetAllData(): Promise<void> {
     await db.delete(slotAssignments);
     await db.delete(minerSnapshots);
@@ -688,6 +733,7 @@ export class DatabaseStorage implements IStorage {
     await db.delete(containers);
     await db.delete(macLocationMappings);
     await db.delete(scanConfigs);
+    await db.delete(siteSettings);
   }
 }
 

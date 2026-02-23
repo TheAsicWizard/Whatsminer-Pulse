@@ -12,7 +12,7 @@ Real-time WhatsMiner mining fleet monitoring dashboard with health alerts, perfo
 
 ## Project Structure
 - `client/src/pages/` - Dashboard, Miners, MinerDetail, Alerts, Settings pages
-- `client/src/components/` - AppSidebar, ThemeProvider, ThemeToggle, StatusIndicator, SiteMap, AssignMinerDialog
+- `client/src/components/` - AppSidebar, ThemeProvider, ThemeToggle, StatusIndicator, SiteMap, SiteLayoutEditor, AssignMinerDialog
 - `client/src/lib/format.ts` - Utility formatters for hashrate, power, temperature, uptime
 - `server/db.ts` - Database connection
 - `server/storage.ts` - Data access layer (IStorage interface + DatabaseStorage)
@@ -20,7 +20,7 @@ Real-time WhatsMiner mining fleet monitoring dashboard with health alerts, perfo
 - `server/scanner.ts` - Network scanner: IP range scanning, CGMiner API probe, real miner telemetry polling
 - `server/poller.ts` - Real miner poller: polls miners with source="scanned" every 30s
 - `server/seed.ts` - Database seed data (47 containers, 22K+ miners, alert rules)
-- `shared/schema.ts` - Drizzle schemas (miners, minerSnapshots, alertRules, alerts, scanConfigs, containers, slotAssignments, macLocationMappings)
+- `shared/schema.ts` - Drizzle schemas (miners, minerSnapshots, alertRules, alerts, scanConfigs, containers, slotAssignments, macLocationMappings, siteSettings)
 
 ## Key Features
 - Fleet overview dashboard with real-time stats and Site Map visualization
@@ -37,6 +37,12 @@ Real-time WhatsMiner mining fleet monitoring dashboard with health alerts, perfo
   - Interactive slot assignment: click empty slot to assign, replace/swap for RMAs (in rack detail view)
   - Container-level summary stats (online count, hashrate, power, avg temp)
   - Naming convention: C188-01-02 (Container-Rack-Slot)
+- **Custom Site Layout Editor**: Upload your actual site photo and click to position containers where they really are
+  - Upload satellite/drone photos or site plans as the map background
+  - Click-to-place: select a container from the sidebar, click on the image to set its position
+  - Free rotation: set any angle per container to match real-world orientation (not just 0/90/180/270)
+  - Dashboard site map automatically uses custom positions when configured, falls back to grid layout otherwise
+  - Positions stored as percentage coordinates for resolution independence
 - Individual miner detail with hashrate/temp/power charts
 - Grid/List view toggle on Miners page with server-side pagination
 - Alert rules engine with threshold monitoring

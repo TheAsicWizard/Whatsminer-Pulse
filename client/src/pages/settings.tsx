@@ -55,6 +55,7 @@ import {
   AlertTriangle,
 } from "lucide-react";
 import type { Miner, AlertRule, ScanConfig, ScanProgress, Container, ContainerWithSlots, MinerWithLatest } from "@shared/schema";
+import SiteLayoutEditor from "@/components/site-layout-editor";
 
 export default function Settings() {
   return (
@@ -68,6 +69,7 @@ export default function Settings() {
         </p>
       </div>
 
+      <SiteLayoutEditor />
       <ForemanImport />
       <ContainerManagement />
       <NetworkScanner />

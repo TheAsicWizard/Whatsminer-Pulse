@@ -8,7 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Box, Server, Cpu, Zap, Thermometer, Settings, ZoomIn, ZoomOut, Maximize2, ArrowLeft } from "lucide-react";
-import type { MinerWithLatest, ContainerWithSlots, Container } from "@shared/schema";
+import type { MinerWithLatest, ContainerWithSlots, Container, SiteSettings } from "@shared/schema";
 import { cn } from "@/lib/utils";
 
 const statusColors: Record<string, { bg: string; border: string; text: string }> = {
@@ -129,6 +129,14 @@ export function ContainerSummaryMap({ containers, onAssignSlot, onSwapSlot, onUn
   const [isPanning, setIsPanning] = useState(false);
   const [panStart, setPanStart] = useState({ x: 0, y: 0 });
   const viewportRef = useRef<HTMLDivElement>(null);
+
+  const { data: siteSettings } = useQuery<SiteSettings>({
+    queryKey: ["/api/site-settings"],
+  });
+
+  const useCustomLayout = siteSettings?.useCustomLayout && containers.some(
+    (c) => c.layoutX != null && c.layoutY != null
+  );
 
   useEffect(() => {
     const el = viewportRef.current;
@@ -262,7 +270,9 @@ export function ContainerSummaryMap({ containers, onAssignSlot, onSwapSlot, onUn
         className="relative overflow-hidden rounded-lg border border-border/50 select-none"
         style={{
           height: "420px",
-          background: "linear-gradient(135deg, hsl(220, 15%, 8%) 0%, hsl(220, 12%, 11%) 50%, hsl(220, 15%, 8%) 100%)",
+          background: useCustomLayout && siteSettings?.backgroundImage
+            ? `url(${siteSettings.backgroundImage}) center/contain no-repeat, linear-gradient(135deg, hsl(220, 15%, 8%) 0%, hsl(220, 12%, 11%) 50%, hsl(220, 15%, 8%) 100%)`
+            : "linear-gradient(135deg, hsl(220, 15%, 8%) 0%, hsl(220, 12%, 11%) 50%, hsl(220, 15%, 8%) 100%)",
           cursor: isPanning ? "grabbing" : "grab",
         }}
         onMouseDown={handleMouseDown}
@@ -271,53 +281,88 @@ export function ContainerSummaryMap({ containers, onAssignSlot, onSwapSlot, onUn
         onMouseLeave={handleMouseUp}
         data-testid="site-map-viewport"
       >
-        <div
-          className="absolute inset-0"
-          style={{
-            backgroundImage: `
-              radial-gradient(circle at 1px 1px, hsl(220, 10%, 18%) 1px, transparent 0)
-            `,
-            backgroundSize: `${20 * zoom}px ${20 * zoom}px`,
-            backgroundPosition: `${pan.x}px ${pan.y}px`,
-            opacity: 0.4,
-          }}
-        />
+        {!useCustomLayout && (
+          <div
+            className="absolute inset-0"
+            style={{
+              backgroundImage: `
+                radial-gradient(circle at 1px 1px, hsl(220, 10%, 18%) 1px, transparent 0)
+              `,
+              backgroundSize: `${20 * zoom}px ${20 * zoom}px`,
+              backgroundPosition: `${pan.x}px ${pan.y}px`,
+              opacity: 0.4,
+            }}
+          />
+        )}
 
-        <div
-          className="absolute"
-          style={{
-            transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
-            transformOrigin: "0 0",
-            padding: "24px",
-          }}
-        >
-          <div className="flex flex-col gap-4">
-            {rows.map((row, rowIdx) => (
-              <div key={rowIdx} className="flex gap-3 items-start">
+        {useCustomLayout ? (
+          <div
+            className="absolute inset-0"
+            style={{
+              transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
+              transformOrigin: "0 0",
+            }}
+          >
+            {containers.map((container) => {
+              if (container.layoutX == null || container.layoutY == null) return null;
+              const rotation = container.layoutRotation ?? 0;
+              return (
                 <div
-                  className="flex items-center justify-center shrink-0"
+                  key={container.id}
+                  className="absolute"
                   style={{
-                    width: "28px",
-                    height: "68px",
-                    writingMode: "vertical-rl",
-                    textOrientation: "mixed",
+                    left: `${container.layoutX}%`,
+                    top: `${container.layoutY}%`,
+                    transform: `translate(-50%, -50%) rotate(${rotation}deg)`,
+                    zIndex: 10,
                   }}
                 >
-                  <span className="text-[9px] font-mono text-muted-foreground/40 rotate-180">
-                    ROW {rowIdx + 1}
-                  </span>
-                </div>
-                {row.map((container) => (
                   <ContainerBlock
-                    key={container.id}
                     container={container}
                     onClick={() => setSelectedContainer(container)}
+                    compact
                   />
-                ))}
-              </div>
-            ))}
+                </div>
+              );
+            })}
           </div>
-        </div>
+        ) : (
+          <div
+            className="absolute"
+            style={{
+              transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
+              transformOrigin: "0 0",
+              padding: "24px",
+            }}
+          >
+            <div className="flex flex-col gap-4">
+              {rows.map((row, rowIdx) => (
+                <div key={rowIdx} className="flex gap-3 items-start">
+                  <div
+                    className="flex items-center justify-center shrink-0"
+                    style={{
+                      width: "28px",
+                      height: "68px",
+                      writingMode: "vertical-rl",
+                      textOrientation: "mixed",
+                    }}
+                  >
+                    <span className="text-[9px] font-mono text-muted-foreground/40 rotate-180">
+                      ROW {rowIdx + 1}
+                    </span>
+                  </div>
+                  {row.map((container) => (
+                    <ContainerBlock
+                      key={container.id}
+                      container={container}
+                      onClick={() => setSelectedContainer(container)}
+                    />
+                  ))}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         <div className="absolute bottom-2 left-2 flex items-center gap-1.5 bg-background/70 backdrop-blur-sm rounded px-2 py-1 border border-border/50">
           <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
@@ -330,7 +375,7 @@ export function ContainerSummaryMap({ containers, onAssignSlot, onSwapSlot, onUn
   );
 }
 
-function ContainerBlock({ container, onClick }: { container: ContainerSummary; onClick: () => void }) {
+function ContainerBlock({ container, onClick, compact }: { container: ContainerSummary; onClick: () => void; compact?: boolean }) {
   const health = getContainerHealthColor(container);
   const totalSlots = container.rackCount * container.slotsPerRack;
   const healthPct = container.totalAssigned > 0

@@ -96,7 +96,17 @@ export const containers = pgTable("containers", {
   slotsPerRack: integer("slots_per_rack").notNull().default(1),
   ipRangeStart: text("ip_range_start"),
   ipRangeEnd: text("ip_range_end"),
+  layoutX: real("layout_x"),
+  layoutY: real("layout_y"),
+  layoutRotation: real("layout_rotation").default(0),
   createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const siteSettings = pgTable("site_settings", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  backgroundImage: text("background_image"),
+  useCustomLayout: boolean("use_custom_layout").default(false),
+  updatedAt: timestamp("updated_at").defaultNow(),
 });
 
 export const slotAssignments = pgTable("slot_assignments", {
@@ -114,6 +124,7 @@ export const insertAlertRuleSchema = createInsertSchema(alertRules).omit({ id: t
 export const insertAlertSchema = createInsertSchema(alerts).omit({ id: true, createdAt: true });
 export const insertScanConfigSchema = createInsertSchema(scanConfigs).omit({ id: true, createdAt: true, lastScanAt: true, lastScanResult: true });
 export const insertContainerSchema = createInsertSchema(containers).omit({ id: true, createdAt: true });
+export const insertSiteSettingsSchema = createInsertSchema(siteSettings).omit({ id: true, updatedAt: true });
 export const insertSlotAssignmentSchema = createInsertSchema(slotAssignments).omit({ id: true, createdAt: true });
 export const insertMacLocationMappingSchema = createInsertSchema(macLocationMappings).omit({ id: true, createdAt: true });
 
@@ -129,6 +140,8 @@ export type InsertScanConfig = z.infer<typeof insertScanConfigSchema>;
 export type ScanConfig = typeof scanConfigs.$inferSelect;
 export type InsertContainer = z.infer<typeof insertContainerSchema>;
 export type Container = typeof containers.$inferSelect;
+export type InsertSiteSettings = z.infer<typeof insertSiteSettingsSchema>;
+export type SiteSettings = typeof siteSettings.$inferSelect;
 export type InsertSlotAssignment = z.infer<typeof insertSlotAssignmentSchema>;
 export type SlotAssignment = typeof slotAssignments.$inferSelect;
 export type InsertMacLocationMapping = z.infer<typeof insertMacLocationMappingSchema>;

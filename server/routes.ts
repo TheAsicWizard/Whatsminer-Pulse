@@ -655,27 +655,40 @@ export async function registerRoutes(
       const mediaType = base64Match[1] as "image/png" | "image/jpeg" | "image/gif" | "image/webp";
       const base64Data = base64Match[2];
 
-      const structurePrompt = `You are analyzing a mining facility site plan. The image shows rectangular shipping containers with BLACK OUTLINES. Each container has a text label like "C000", "C001", "C210".
+      const structurePrompt = `You are analyzing a mining facility site plan. The image shows rectangular shipping containers arranged in rows. Each container is a small rectangle visible in the plan.
 
-CRITICAL: To determine each container's rotation angle, look at the BLACK RECTANGULAR OUTLINES of the containers themselves. The long axis of each rectangle tells you the exact angle. Measure this carefully:
-- If containers are perfectly horizontal (long axis left-right), rotation = 0
-- If containers are tilted diagonally from lower-left to upper-right, the rotation will be between 300-340 degrees (e.g. 325 means the long axis goes from lower-left to upper-right at about 35 degrees above horizontal)
-- The outline shape is the ground truth - do NOT guess angles
+COUNTING INSTRUCTIONS - THIS IS CRITICAL:
+- Do NOT estimate container counts. Carefully COUNT each individual container rectangle in every row.
+- Each container appears as a distinct small rectangular shape (sometimes with equipment symbols inside).
+- Rows of containers run parallel to each other. A "row" is a straight line of containers side by side.
+- If containers appear in PAIRS of rows (two rows close together inside a rounded rectangle enclosure), treat each line of containers as its own separate row.
 
-Your task: Identify distinct GROUPS of containers. Containers in the same group share the same rotation angle and are arranged in parallel rows.
+ROTATION DETECTION:
+- Look at each container's rectangular outline. The LONG AXIS tells you the rotation angle.
+- Horizontal containers (long axis left-right): rotation = 0
+- Diagonal containers (long axis going from lower-left to upper-right): rotation ≈ 325 degrees
+- The container outline shape is the ground truth - measure from the actual rectangles
+
+GROUPS: Containers with the same rotation angle form a group. Typical layouts have:
+- A DIAGONAL group in the upper-left area (containers tilted ~325°)
+- A HORIZONTAL group on the right side (containers at 0°)
+- Sometimes STANDALONE containers (larger spacing, at bottom)
 
 For EACH group, provide:
-1. "rows": An array describing each row of containers in this group. Each row has:
-   - "rowStartX", "rowStartY": percentage position (0-100) of the FIRST container in this row  
-   - "rowEndX", "rowEndY": percentage position (0-100) of the LAST container in this row
-   - "count": number of containers in this row
-2. "rotation": The measured rotation angle from the container outlines (0 for horizontal, 325 for typical diagonal)
-3. "readableLabels": Labels you can read, with position. Format: [{"name": "C210", "x": 85, "y": 54}]
-4. "description": Where this group is in the image
+1. "rows": Array where each element describes ONE row of containers:
+   - "rowStartX", "rowStartY": percentage position (0-100) of the FIRST container center
+   - "rowEndX", "rowEndY": percentage position (0-100) of the LAST container center
+   - "count": EXACT number of containers you can count in this row
+2. "rotation": Measured angle from container outlines
+3. "readableLabels": Any text labels you can read: [{"name": "C210", "x": 85, "y": 54}]
+4. "description": Location description
 5. "containerOrder": "first" if this group has the lowest-numbered containers
 
-For rows in DIAGONAL groups: rowStart should be at the lower-left end of the row, rowEnd at the upper-right end.
-For rows in HORIZONTAL groups: rowStart should be at the left end, rowEnd at the right end. List rows from top to bottom.
+ROW ORDERING within each group:
+- DIAGONAL groups: list rows from the first row (top-left, fewest containers or earliest numbering) to the last row (bottom-right)
+- HORIZONTAL groups: list rows strictly from TOP to BOTTOM (lowest Y first)
+- For diagonal rows: rowStart = lower-left end, rowEnd = upper-right end
+- For horizontal rows: rowStart = left end, rowEnd = right end
 
 There are ${totalContainers} containers total: ${containerNames.slice(0, 5).join(", ")} ... ${containerNames.slice(-3).join(", ")}.
 

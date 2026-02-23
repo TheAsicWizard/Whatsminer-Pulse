@@ -803,6 +803,18 @@ Return ONLY valid JSON (no markdown, no explanation):
         return res.status(500).json({ message: "AI did not return valid row data. Try the Wolf Hollow template." });
       }
 
+      for (const group of validGroups) {
+        if (Array.isArray(group.rows)) {
+          const isDiag = group.rotation !== 0 && group.rotation !== 180 && group.rotation !== 360;
+          group.rows.sort((a, b) => {
+            if (isDiag) {
+              return (a.rowStartY + a.rowStartX) - (b.rowStartY + b.rowStartX);
+            }
+            return a.rowStartY - b.rowStartY;
+          });
+        }
+      }
+
       const allDetectedRows: { row: DetectedRow; rotation: number; groupIdx: number }[] = [];
       for (let gi = 0; gi < validGroups.length; gi++) {
         const group = validGroups[gi];

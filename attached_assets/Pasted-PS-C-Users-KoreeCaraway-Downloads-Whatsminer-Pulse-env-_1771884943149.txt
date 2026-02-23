@@ -1,0 +1,159 @@
+PS C:\Users\KoreeCaraway\Downloads\Whatsminer-Pulse> $env:DATABASE_URL="postgresql://postgres:postgres@localhost:5432/whatsminer_pulse"; npx cross-env NODE_ENV=development tsx server/index.ts
+No config path provided, using default 'drizzle.config.ts'
+Reading config file 'C:\Users\KoreeCaraway\Downloads\Whatsminer-Pulse\drizzle.config.ts'
+Using 'pg' driver for database querying
+[✓] Pulling schema from database...
+[i] No changes detected
+4:14:58 PM [seed] Database already seeded, skipping
+4:14:58 PM [poller] Starting real miner poller (30s interval)
+4:14:58 PM [poller] Polling 135 miners in batches of 30...
+4:14:58 PM [poller-debug] [poller-debug] === RAW RESPONSE FOR 10.31.184.176 ===
+4:14:58 PM [poller-debug] [poller-debug] Summary raw: {"STATUS":"S","When":1771884898,"Code":131,"Msg":{"Elapsed":27136.4140625,"MHS av":164069760,"MHS 1m":164225280,"MHS 15m":163953776,"HS RT":164225280,"freq_avg":336.6206970214844,"Fan Speed In":3369,"Fan Speed Out":3457,"Power":2984.826666666667,"Power Rate":18.200607299804688,"Pool Rejected%":0.00203045690432191,"Uptime":2176400,"Hash Stable":"true","Hash Stable Cost Seconds":1661,"Target Freq":0,"Env Temp":20.687,"Power Mode":"Normal","Factory GHS":186998,"Power Limit":3000,"Chip Temp Min":40.
+4:14:58 PM [poller-debug] [poller-debug] Stats raw: {"STATUS":"E","When":1771884898,"Code":14,"Msg":"invalid cmd","Description":""}
+4:14:58 PM [poller-debug] [poller-debug] Summary top-level keys: STATUS, When, Code, Msg, Description
+4:14:58 PM [poller-debug] [poller-debug] Stats top-level keys: STATUS, When, Code, Msg, Description
+4:14:58 PM [poller-debug] [poller-debug] === RAW RESPONSE FOR 10.31.184.161 ===
+4:14:58 PM [poller-debug] [poller-debug] Summary raw: {"STATUS":"S","When":1771884898,"Code":131,"Msg":{"Elapsed":1100.965576171875,"MHS av":189858560,"MHS 1m":190556288,"MHS 15m":189907728,"HS RT":190556288,"freq_avg":385.51446533203125,"Fan Speed In":3548,"Fan Speed Out":3460,"Power":3587.693333333333,"Power Rate":18.858469009399414,"Pool Rejected%":0,"Uptime":2650,"Hash Stable":"false","Hash Stable Cost Seconds":0,"Target Freq":0,"Env Temp":19.937,"Power Mode":"Normal","Factory GHS":177489,"Power Limit":3600,"Chip Temp Min":45.96521759033203,"Ch
+4:14:58 PM [poller-debug] [poller-debug] Stats raw: {"STATUS":"E","When":1771884898,"Code":14,"Msg":"invalid cmd","Description":""}
+4:14:58 PM [poller-debug] [poller-debug] Summary top-level keys: STATUS, When, Code, Msg, Description
+4:14:58 PM [poller-debug] [poller-debug] Stats top-level keys: STATUS, When, Code, Msg, Description
+4:14:58 PM [poller-debug] [poller-debug] === RAW RESPONSE FOR 10.31.184.178 ===
+4:14:58 PM [poller-debug] [poller-debug] Summary raw: {"STATUS":"S","When":1771884898,"Code":131,"Msg":{"Elapsed":981620.375,"MHS av":167707744,"MHS 1m":167855392,"MHS 15m":167760144,"HS RT":167855392,"freq_avg":340.45379638671875,"Fan Speed In":2666,"Fan Speed Out":2666,"Power":3018.32,"Power Rate":18.012331008911133,"Pool Rejected%":0.00130722508765757,"Uptime":2176399,"Hash Stable":"true","Hash Stable Cost Seconds":1740,"Target Freq":0,"Env Temp":20.125,"Power Mode":"Normal","Factory GHS":186312,"Power Limit":3000,"Chip Temp Min":46.286956787109
+4:14:58 PM [poller-debug] [poller-debug] Stats raw: {"STATUS":"E","When":1771884898,"Code":14,"Msg":"invalid cmd","Description":""}
+4:14:58 PM [poller-debug] [poller-debug] Summary top-level keys: STATUS, When, Code, Msg, Description
+4:14:58 PM [poller-debug] [poller-debug] Stats top-level keys: STATUS, When, Code, Msg, Description
+4:14:58 PM [poller-debug] [poller-debug] === RAW RESPONSE FOR 10.31.184.202 ===
+4:14:58 PM [poller-debug] [poller-debug] Summary raw: {"STATUS":"S","When":1771884898,"Code":131,"Msg":{"Elapsed":981132,"MHS av":178598672,"MHS 1m":178772560,"MHS 15m":178653552,"HS RT":178772560,"freq_avg":367.59130859375,"Fan Speed In":3372,"Fan Speed Out":3313,"Power":3391.8133333333335,"Power Rate":19.00515365600586,"Pool Rejected%":0.00107635732274503,"Uptime":10034589,"Hash Stable":"true","Hash Stable Cost Seconds":2245,"Target Freq":0,"Env Temp":20.125,"Power Mode":"Normal","Factory GHS":172539,"Power Limit":3400,"Chip Temp Min":45.26086807
+4:14:58 PM [poller-debug] [poller-debug] Stats raw: {"STATUS":"E","When":1771884898,"Code":14,"Msg":"invalid cmd","Description":""}
+4:14:58 PM [poller-debug] [poller-debug] Summary top-level keys: STATUS, When, Code, Msg, Description
+4:14:58 PM [poller-debug] [poller-debug] Stats top-level keys: STATUS, When, Code, Msg, Description
+4:14:58 PM [poller-debug] [poller-debug] === RAW RESPONSE FOR 10.31.184.179 ===
+4:14:58 PM [poller-debug] [poller-debug] Summary raw: {"STATUS":"S","When":1771884898,"Code":131,"Msg":{"Elapsed":1470.1285400390625,"MHS av":167634240,"MHS 1m":167938656,"MHS 15m":167673808,"HS RT":167938656,"freq_avg":339.9039611816406,"Fan Speed In":2521,"Fan Speed Out":2639,"Power":2955.1866666666665,"Power Rate":17.6461238861084,"Pool Rejected%":0,"Uptime":2649,"Hash Stable":"true","Hash Stable Cost Seconds":1122,"Target Freq":0,"Env Temp":19.375,"Power Mode":"Normal","Factory GHS":192227,"Power Limit":3000,"Chip Temp Min":44.88695526123047,"C
+4:14:58 PM [poller-debug] [poller-debug] Stats raw: {"STATUS":"E","When":1771884898,"Code":14,"Msg":"invalid cmd","Description":""}
+4:14:58 PM [poller-debug] [poller-debug] Summary top-level keys: STATUS, When, Code, Msg, Description
+4:14:58 PM [poller-debug] [poller-debug] Stats top-level keys: STATUS, When, Code, Msg, Description
+4:14:58 PM [poller-debug] [poller-debug] === RAW RESPONSE FOR 10.31.184.153 ===
+4:14:58 PM [poller-debug] [poller-debug] Summary raw: {"STATUS":"S","When":1771884898,"Code":131,"Msg":{"Elapsed":27433.984375,"MHS av":191017664,"MHS 1m":190894608,"MHS 15m":190936160,"HS RT":190894608,"freq_avg":387.6468505859375,"Fan Speed In":3489,"Fan Speed Out":3431,"Power":3552.346666666667,"Power Rate":18.650081634521484,"Pool Rejected%":0,"Uptime":2176400,"Hash Stable":"true","Hash Stable Cost Seconds":1369,"Target Freq":0,"Env Temp":19.687,"Power Mode":"Normal","Factory GHS":187816,"Power Limit":3600,"Chip Temp Min":46.3739128112793,"Chip
+4:14:58 PM [poller-debug] [poller-debug] Stats raw: {"STATUS":"E","When":1771884898,"Code":14,"Msg":"invalid cmd","Description":""}
+4:14:58 PM [poller-debug] [poller-debug] Summary top-level keys: STATUS, When, Code, Msg, Description
+4:14:58 PM [poller-debug] [poller-debug] Stats top-level keys: STATUS, When, Code, Msg, Description
+4:14:58 PM [poller-debug] [poller-debug] === RAW RESPONSE FOR 10.31.184.188 ===
+4:14:58 PM [poller-debug] [poller-debug] Summary raw: {"STATUS":"S","When":1771884898,"Code":131,"Msg":{"Elapsed":981551.125,"MHS av":162794480,"MHS 1m":162887152,"MHS 15m":162819488,"HS RT":162887152,"freq_avg":332.9839782714844,"Fan Speed In":3603,"Fan Speed Out":3603,"Power":2998.4666666666667,"Power Rate":18.415613174438477,"Pool Rejected%":0.00111130776349455,"Uptime":2176400,"Hash Stable":"true","Hash Stable Cost Seconds":1809,"Target Freq":0,"Env Temp":21.062,"Power Mode":"Normal","Factory GHS":179857,"Power Limit":3000,"Chip Temp Min":40.40
+4:14:58 PM [poller-debug] [poller-debug] Stats raw: {"STATUS":"E","When":1771884898,"Code":14,"Msg":"invalid cmd","Description":""}
+4:14:58 PM [poller-debug] [poller-debug] Summary top-level keys: STATUS, When, Code, Msg, Description
+4:14:58 PM [poller-debug] [poller-debug] Stats top-level keys: STATUS, When, Code, Msg, Description
+4:14:58 PM [poller-debug] [poller-debug] === RAW RESPONSE FOR 10.31.184.189 ===
+4:14:58 PM [poller-debug] [poller-debug] Summary raw: {"STATUS":"S","When":1771884898,"Code":131,"Msg":{"Elapsed":197396.9375,"MHS av":180976800,"MHS 1m":181014592,"MHS 15m":181040544,"HS RT":181014592,"freq_avg":370.7350158691406,"Fan Speed In":3867,"Fan Speed Out":4013,"Power":3375.84,"Power Rate":18.629070281982422,"Pool Rejected%":0.000441195006715134,"Uptime":10034691,"Hash Stable":"true","Hash Stable Cost Seconds":1314,"Target Freq":0,"Env Temp":20.062,"Power Mode":"Normal","Factory GHS":184948,"Power Limit":3400,"Chip Temp Min":40.6478271484
+4:14:58 PM [poller-debug] [poller-debug] Stats raw: {"STATUS":"E","When":1771884898,"Code":14,"Msg":"invalid cmd","Description":""}
+4:14:58 PM [poller-debug] [poller-debug] Summary top-level keys: STATUS, When, Code, Msg, Description
+4:14:58 PM [poller-debug] [poller-debug] Stats top-level keys: STATUS, When, Code, Msg, Description
+4:14:58 PM [poller-debug] [poller-debug] === RAW RESPONSE FOR 10.31.184.157 ===
+4:14:58 PM [poller-debug] [poller-debug] Summary raw: {"STATUS":"S","When":1771884898,"Code":131,"Msg":{"Elapsed":27426.984375,"MHS av":166804480,"MHS 1m":166632160,"MHS 15m":166789696,"HS RT":166632160,"freq_avg":338.9743347167969,"Fan Speed In":3372,"Fan Speed Out":3372,"Power":2985.7466666666664,"Power Rate":17.91490936279297,"Pool Rejected%":0.00146020925603807,"Uptime":2176400,"Hash Stable":"true","Hash Stable Cost Seconds":1371,"Target Freq":0,"Env Temp":21.125,"Power Mode":"Normal","Factory GHS":189064,"Power Limit":3000,"Chip Temp Min":42.5
+4:14:58 PM [poller-debug] [poller-debug] Stats raw: {"STATUS":"E","When":1771884898,"Code":14,"Msg":"invalid cmd","Description":""}
+4:14:58 PM [poller-debug] [poller-debug] Summary top-level keys: STATUS, When, Code, Msg, Description
+4:14:58 PM [poller-debug] [poller-debug] Stats top-level keys: STATUS, When, Code, Msg, Description
+4:14:58 PM [poller-debug] [poller-debug] === RAW RESPONSE FOR 10.31.184.205 ===
+4:14:58 PM [poller-debug] [poller-debug] Summary raw: {"STATUS":"S","When":1771884898,"Code":131,"Msg":{"Elapsed":981709.25,"MHS av":184965296,"MHS 1m":185456336,"MHS 15m":185049712,"HS RT":185456336,"freq_avg":374.45123291015625,"Fan Speed In":2697,"Fan Speed Out":2727,"Power":3383.92,"Power Rate":18.2691707611084,"Pool Rejected%":0.000903029460459948,"Uptime":2176399,"Hash Stable":"true","Hash Stable Cost Seconds":1657,"Target Freq":0,"Env Temp":18.875,"Power Mode":"Normal","Factory GHS":190613,"Power Limit":3400,"Chip Temp Min":47.36956405639648
+4:14:58 PM [poller-debug] [poller-debug] Stats raw: {"STATUS":"E","When":1771884898,"Code":14,"Msg":"invalid cmd","Description":""}
+4:14:58 PM [poller-debug] [poller-debug] Summary top-level keys: STATUS, When, Code, Msg, Description
+4:14:58 PM [poller-debug] [poller-debug] Stats top-level keys: STATUS, When, Code, Msg, Description
+4:14:58 PM [poller-debug] [poller-debug] === RAW RESPONSE FOR 10.31.184.203 ===
+4:14:58 PM [poller-debug] [poller-debug] Summary raw: {"STATUS":"S","When":1771884898,"Code":131,"Msg":{"Elapsed":27628.38671875,"MHS av":187931296,"MHS 1m":187413760,"MHS 15m":187876992,"HS RT":187413760,"freq_avg":387.57037353515625,"Fan Speed In":4365,"Fan Speed Out":4394,"Power":3615.2933333333335,"Power Rate":19.268951416015625,"Pool Rejected%":0.000440722797065973,"Uptime":2176400,"Hash Stable":"true","Hash Stable Cost Seconds":1181,"Target Freq":0,"Env Temp":20.125,"Power Mode":"Normal","Factory GHS":181759,"Power Limit":3600,"Chip Temp Min"
+4:14:58 PM [poller-debug] [poller-debug] Stats raw: {"STATUS":"E","When":1771884898,"Code":14,"Msg":"invalid cmd","Description":""}
+4:14:58 PM [poller-debug] [poller-debug] Summary top-level keys: STATUS, When, Code, Msg, Description
+4:14:58 PM [poller-debug] [poller-debug] Stats top-level keys: STATUS, When, Code, Msg, Description
+4:14:58 PM [poller-debug] [poller-debug] === RAW RESPONSE FOR 10.31.184.218 ===
+4:14:58 PM [poller-debug] [poller-debug] Summary raw: {"STATUS":"S","When":1771884898,"Code":131,"Msg":{"Elapsed":27213.751953125,"MHS av":182064944,"MHS 1m":182156384,"MHS 15m":182090784,"HS RT":182156384,"freq_avg":369.3909606933594,"Fan Speed In":4134,"Fan Speed Out":4310,"Power":3407,"Power Rate":18.722373962402344,"Pool Rejected%":0.000445930869318545,"Uptime":2176399,"Hash Stable":"true","Hash Stable Cost Seconds":1578,"Target Freq":0,"Env Temp":19.75,"Power Mode":"Normal","Factory GHS":185763,"Power Limit":3400,"Chip Temp Min":38.86956405639
+4:14:58 PM [poller-debug] [poller-debug] Stats raw: {"STATUS":"E","When":1771884898,"Code":14,"Msg":"invalid cmd","Description":""}
+4:14:58 PM [poller-debug] [poller-debug] Summary top-level keys: STATUS, When, Code, Msg, Description
+4:14:58 PM [poller-debug] [poller-debug] Stats top-level keys: STATUS, When, Code, Msg, Description
+4:14:58 PM [poller-debug] [poller-debug] === RAW RESPONSE FOR 10.31.184.219 ===
+4:14:58 PM [poller-debug] [poller-debug] Summary raw: {"STATUS":"S","When":1771884898,"Code":131,"Msg":{"Elapsed":982269.8125,"MHS av":176554640,"MHS 1m":176899984,"MHS 15m":176545776,"HS RT":176899984,"freq_avg":358.85504150390625,"Fan Speed In":3076,"Fan Speed Out":3076,"Power":3223.76,"Power Rate":18.25815200805664,"Pool Rejected%":0.000996499322354794,"Uptime":2176400,"Hash Stable":"true","Hash Stable Cost Seconds":1096,"Target Freq":0,"Env Temp":19.187,"Power Mode":"Normal","Factory GHS":191742,"Power Limit":3400,"Chip Temp Min":42.89130401611
+4:14:58 PM [poller-debug] [poller-debug] Stats raw: {"STATUS":"E","When":1771884898,"Code":14,"Msg":"invalid cmd","Description":""}
+4:14:58 PM [poller-debug] [poller-debug] Summary top-level keys: STATUS, When, Code, Msg, Description
+4:14:58 PM [poller-debug] [poller-debug] Stats top-level keys: STATUS, When, Code, Msg, Description
+4:14:58 PM [poller-debug] [poller-debug] === RAW RESPONSE FOR 10.31.184.208 ===
+4:14:58 PM [poller-debug] [poller-debug] Summary raw: {"STATUS":"S","When":1771884898,"Code":131,"Msg":{"Elapsed":27486.431640625,"MHS av":162153968,"MHS 1m":161986656,"MHS 15m":162135008,"HS RT":161986656,"freq_avg":330.7637939453125,"Fan Speed In":2492,"Fan Speed Out":2580,"Power":2934.9733333333334,"Power Rate":18.14305877685547,"Pool Rejected%":0.00049019610742107,"Uptime":2176399,"Hash Stable":"true","Hash Stable Cost Seconds":1311,"Target Freq":0,"Env Temp":20.187,"Power Mode":"Normal","Factory GHS":179699,"Power Limit":3000,"Chip Temp Min":4
+4:14:58 PM [poller-debug] [poller-debug] Stats raw: {"STATUS":"E","When":1771884898,"Code":14,"Msg":"invalid cmd","Description":""}
+4:14:58 PM [poller-debug] [poller-debug] Summary top-level keys: STATUS, When, Code, Msg, Description
+4:14:58 PM [poller-debug] [poller-debug] Stats top-level keys: STATUS, When, Code, Msg, Description
+4:14:58 PM [poller-debug] [poller-debug] === RAW RESPONSE FOR 10.31.184.196 ===
+4:14:58 PM [poller-debug] [poller-debug] Summary raw: {"STATUS":"S","When":1771884898,"Code":131,"Msg":{"Elapsed":197685.25,"MHS av":181710784,"MHS 1m":181378800,"MHS 15m":181715536,"HS RT":181378800,"freq_avg":372.442626953125,"Fan Speed In":3900,"Fan Speed Out":3782,"Power":3401.68,"Power Rate":18.762943267822266,"Pool Rejected%":0.000496385677251965,"Uptime":10034600,"Hash Stable":"true","Hash Stable Cost Seconds":1017,"Target Freq":0,"Env Temp":20.5,"Power Mode":"Normal","Factory GHS":181732,"Power Limit":3400,"Chip Temp Min":44.547828674316406
+4:14:58 PM [poller-debug] [poller-debug] Stats raw: {"STATUS":"E","When":1771884898,"Code":14,"Msg":"invalid cmd","Description":""}
+4:14:58 PM [poller-debug] [poller-debug] Summary top-level keys: STATUS, When, Code, Msg, Description
+4:14:58 PM [poller-debug] [poller-debug] Stats top-level keys: STATUS, When, Code, Msg, Description
+4:14:58 PM [poller-debug] [poller-debug] === RAW RESPONSE FOR 10.31.184.165 ===
+4:14:58 PM [poller-debug] [poller-debug] Summary raw: {"STATUS":"S","When":1771884898,"Code":131,"Msg":{"Elapsed":27547.564453125,"MHS av":180749264,"MHS 1m":180740688,"MHS 15m":180685296,"HS RT":180740688,"freq_avg":367.628173828125,"Fan Speed In":3460,"Fan Speed Out":3577,"Power":3400.76,"Power Rate":18.842832565307617,"Pool Rejected%":0.000478240079246461,"Uptime":2176400,"Hash Stable":"true","Hash Stable Cost Seconds":1245,"Target Freq":0,"Env Temp":20.937,"Power Mode":"Normal","Factory GHS":174240,"Power Limit":3400,"Chip Temp Min":43.49130249
+4:14:58 PM [poller-debug] [poller-debug] Stats raw: {"STATUS":"E","When":1771884898,"Code":14,"Msg":"invalid cmd","Description":""}
+4:14:58 PM [poller-debug] [poller-debug] Summary top-level keys: STATUS, When, Code, Msg, Description
+4:14:58 PM [poller-debug] [poller-debug] Stats top-level keys: STATUS, When, Code, Msg, Description
+4:14:58 PM [poller-debug] [poller-debug] === RAW RESPONSE FOR 10.31.184.193 ===
+4:14:58 PM [poller-debug] [poller-debug] Summary raw: {"STATUS":"S","When":1771884898,"Code":131,"Msg":{"Elapsed":197430.71875,"MHS av":183772400,"MHS 1m":183805840,"MHS 15m":183818496,"HS RT":183805840,"freq_avg":372.54156494140625,"Fan Speed In":3519,"Fan Speed Out":3636,"Power":3391.5466666666666,"Power Rate":18.469125747680664,"Pool Rejected%":0.00074239051900804,"Uptime":10033534,"Hash Stable":"true","Hash Stable Cost Seconds":1267,"Target Freq":0,"Env Temp":19.562,"Power Mode":"Normal","Factory GHS":186163,"Power Limit":3400,"Chip Temp Min":4
+4:14:58 PM [poller-debug] [poller-debug] Stats raw: {"STATUS":"E","When":1771884898,"Code":14,"Msg":"invalid cmd","Description":""}
+4:14:58 PM [poller-debug] [poller-debug] Summary top-level keys: STATUS, When, Code, Msg, Description
+4:14:58 PM [poller-debug] [poller-debug] Stats top-level keys: STATUS, When, Code, Msg, Description
+4:14:58 PM [poller-debug] [poller-debug] === RAW RESPONSE FOR 10.31.184.158 ===
+4:14:58 PM [poller-debug] [poller-debug] Summary raw: {"STATUS":"S","When":1771884898,"Code":131,"Msg":{"Elapsed":27417.01953125,"MHS av":165877312,"MHS 1m":165974064,"MHS 15m":165780032,"HS RT":165974064,"freq_avg":336.0985412597656,"Fan Speed In":3017,"Fan Speed Out":3046,"Power":2988.9866666666667,"Power Rate":18.034143447875977,"Pool Rejected%":0.000519210821948946,"Uptime":2176400,"Hash Stable":"true","Hash Stable Cost Seconds":1374,"Target Freq":0,"Env Temp":22.375,"Power Mode":"Normal","Factory GHS":188290,"Power Limit":3000,"Chip Temp Min":
+4:14:58 PM [poller-debug] [poller-debug] Stats raw: {"STATUS":"E","When":1771884898,"Code":14,"Msg":"invalid cmd","Description":""}
+4:14:58 PM [poller-debug] [poller-debug] Summary top-level keys: STATUS, When, Code, Msg, Description
+4:14:58 PM [poller-debug] [poller-debug] Stats top-level keys: STATUS, When, Code, Msg, Description
+4:14:58 PM [poller-debug] [poller-debug] === RAW RESPONSE FOR 10.31.184.154 ===
+4:14:58 PM [poller-debug] [poller-debug] Summary raw: {"STATUS":"S","When":1771884898,"Code":131,"Msg":{"Elapsed":197554.046875,"MHS av":183113808,"MHS 1m":183288624,"MHS 15m":183139008,"HS RT":183288624,"freq_avg":371.4151611328125,"Fan Speed In":3607,"Fan Speed Out":3548,"Power":3419.7466666666664,"Power Rate":18.69255828857422,"Pool Rejected%":0.000563874433282763,"Uptime":10034678,"Hash Stable":"true","Hash Stable Cost Seconds":1159,"Target Freq":0,"Env Temp":20.875,"Power Mode":"Normal","Factory GHS":176467,"Power Limit":3400,"Chip Temp Min":4
+4:14:58 PM [poller-debug] [poller-debug] Stats raw: {"STATUS":"E","When":1771884898,"Code":14,"Msg":"invalid cmd","Description":""}
+4:14:58 PM [poller-debug] [poller-debug] Summary top-level keys: STATUS, When, Code, Msg, Description
+4:14:58 PM [poller-debug] [poller-debug] Stats top-level keys: STATUS, When, Code, Msg, Description
+4:14:58 PM [poller-debug] [poller-debug] === RAW RESPONSE FOR 10.31.184.214 ===
+4:14:58 PM [poller-debug] [poller-debug] Summary raw: {"STATUS":"S","When":1771884898,"Code":131,"Msg":{"Elapsed":197035.671875,"MHS av":191157152,"MHS 1m":191721536,"MHS 15m":191348640,"HS RT":191721536,"freq_avg":388.36090087890625,"Fan Speed In":4457,"Fan Speed Out":4428,"Power":3610.68,"Power Rate":18.83356475830078,"Pool Rejected%":0.000473653053632006,"Uptime":10034523,"Hash Stable":"true","Hash Stable Cost Seconds":1647,"Target Freq":0,"Env Temp":22.062,"Power Mode":"Normal","Factory GHS":183669,"Power Limit":3600,"Chip Temp Min":43.56086730
+4:14:58 PM [poller-debug] [poller-debug] Stats raw: {"STATUS":"E","When":1771884898,"Code":14,"Msg":"invalid cmd","Description":""}
+4:14:58 PM [poller-debug] [poller-debug] Summary top-level keys: STATUS, When, Code, Msg, Description
+4:14:58 PM [poller-debug] [poller-debug] Stats top-level keys: STATUS, When, Code, Msg, Description
+4:14:58 PM [poller-debug] [poller-debug] === RAW RESPONSE FOR 10.31.184.187 ===
+4:14:58 PM [poller-debug] [poller-debug] Summary raw: {"STATUS":"S","When":1771884898,"Code":131,"Msg":{"Elapsed":27164.248046875,"MHS av":181680480,"MHS 1m":181868976,"MHS 15m":181633120,"HS RT":181868976,"freq_avg":368.8953857421875,"Fan Speed In":4248,"Fan Speed Out":4306,"Power":3416.9733333333334,"Power Rate":18.772123336791992,"Pool Rejected%":0,"Uptime":2176400,"Hash Stable":"true","Hash Stable Cost Seconds":1634,"Target Freq":0,"Env Temp":21.875,"Power Mode":"Normal","Factory GHS":180111,"Power Limit":3400,"Chip Temp Min":42.48695755004883,
+4:14:58 PM [poller-debug] [poller-debug] Stats raw: {"STATUS":"E","When":1771884898,"Code":14,"Msg":"invalid cmd","Description":""}
+4:14:58 PM [poller-debug] [poller-debug] Summary top-level keys: STATUS, When, Code, Msg, Description
+4:14:58 PM [poller-debug] [poller-debug] Stats top-level keys: STATUS, When, Code, Msg, Description
+4:14:58 PM [poller-debug] [poller-debug] === RAW RESPONSE FOR 10.31.184.212 ===
+4:14:58 PM [poller-debug] [poller-debug] Summary raw: {"STATUS":"S","When":1771884898,"Code":131,"Msg":{"Elapsed":981509.75,"MHS av":161265120,"MHS 1m":160940272,"MHS 15m":161285920,"HS RT":160940272,"freq_avg":331.2566833496094,"Fan Speed In":3137,"Fan Speed Out":3225,"Power":2983.9333333333334,"Power Rate":18.536069869995117,"Pool Rejected%":0.00103221100289375,"Uptime":2176399,"Hash Stable":"true","Hash Stable Cost Seconds":1861,"Target Freq":0,"Env Temp":21.437,"Power Mode":"Normal","Factory GHS":176066,"Power Limit":3000,"Chip Temp Min":41.639
+4:14:58 PM [poller-debug] [poller-debug] Stats raw: {"STATUS":"E","When":1771884898,"Code":14,"Msg":"invalid cmd","Description":""}
+4:14:58 PM [poller-debug] [poller-debug] Summary top-level keys: STATUS, When, Code, Msg, Description
+4:14:58 PM [poller-debug] [poller-debug] Stats top-level keys: STATUS, When, Code, Msg, Description
+4:14:58 PM [poller-debug] [poller-debug] === RAW RESPONSE FOR 10.31.184.175 ===
+4:14:58 PM [poller-debug] [poller-debug] Summary raw: {"STATUS":"S","When":1771884898,"Code":131,"Msg":{"Elapsed":27148.05859375,"MHS av":177503760,"MHS 1m":177589520,"MHS 15m":177478432,"HS RT":177589520,"freq_avg":366.5338134765625,"Fan Speed In":3196,"Fan Speed Out":3225,"Power":3390.7466666666664,"Power Rate":19.109235763549805,"Pool Rejected%":0,"Uptime":2176400,"Hash Stable":"true","Hash Stable Cost Seconds":1661,"Target Freq":0,"Env Temp":20.312,"Power Mode":"Normal","Factory GHS":172864,"Power Limit":3400,"Chip Temp Min":46.895652770996094,
+4:14:58 PM [poller-debug] [poller-debug] Stats raw: {"STATUS":"E","When":1771884898,"Code":14,"Msg":"invalid cmd","Description":""}
+4:14:58 PM [poller-debug] [poller-debug] Summary top-level keys: STATUS, When, Code, Msg, Description
+4:14:58 PM [poller-debug] [poller-debug] Stats top-level keys: STATUS, When, Code, Msg, Description
+4:14:58 PM [poller-debug] [poller-debug] === RAW RESPONSE FOR 10.31.184.201 ===
+4:14:58 PM [poller-debug] [poller-debug] Summary raw: {"STATUS":"S","When":1771884898,"Code":131,"Msg":{"Elapsed":197130.4375,"MHS av":182384608,"MHS 1m":182344704,"MHS 15m":182407616,"HS RT":182344704,"freq_avg":370.2966613769531,"Fan Speed In":3222,"Fan Speed Out":3134,"Power":3389.72,"Power Rate":18.606884002685547,"Pool Rejected%":0.000625351734925061,"Uptime":10034509,"Hash Stable":"true","Hash Stable Cost Seconds":1570,"Target Freq":0,"Env Temp":19.437,"Power Mode":"Normal","Factory GHS":179002,"Power Limit":3400,"Chip Temp Min":45.3130455017
+4:14:58 PM [poller-debug] [poller-debug] Stats raw: {"STATUS":"E","When":1771884898,"Code":14,"Msg":"invalid cmd","Description":""}
+4:14:58 PM [poller-debug] [poller-debug] Summary top-level keys: STATUS, When, Code, Msg, Description
+4:14:58 PM [poller-debug] [poller-debug] Stats top-level keys: STATUS, When, Code, Msg, Description
+4:14:58 PM [poller-debug] [poller-debug] === RAW RESPONSE FOR 10.31.184.169 ===
+4:14:58 PM [poller-debug] [poller-debug] Summary raw: {"STATUS":"S","When":1771884898,"Code":131,"Msg":{"Elapsed":981555.75,"MHS av":166800416,"MHS 1m":167173632,"MHS 15m":166831744,"HS RT":167173632,"freq_avg":338.2837829589844,"Fan Speed In":3167,"Fan Speed Out":3137,"Power":2989.76,"Power Rate":17.91111946105957,"Pool Rejected%":0.000945853302255273,"Uptime":2176400,"Hash Stable":"true","Hash Stable Cost Seconds":1808,"Target Freq":0,"Env Temp":19.875,"Power Mode":"Normal","Factory GHS":190779,"Power Limit":3000,"Chip Temp Min":40.79130554199219
+4:14:58 PM [poller-debug] [poller-debug] Stats raw: {"STATUS":"E","When":1771884898,"Code":14,"Msg":"invalid cmd","Description":""}
+4:14:58 PM [poller-debug] [poller-debug] Summary top-level keys: STATUS, When, Code, Msg, Description
+4:14:58 PM [poller-debug] [poller-debug] Stats top-level keys: STATUS, When, Code, Msg, Description
+4:14:58 PM [poller-debug] [poller-debug] === RAW RESPONSE FOR 10.31.184.207 ===
+4:14:58 PM [poller-debug] [poller-debug] Summary raw: {"STATUS":"S","When":1771884898,"Code":131,"Msg":{"Elapsed":27211.814453125,"MHS av":163251440,"MHS 1m":163008624,"MHS 15m":163219872,"HS RT":163008624,"freq_avg":334.63262939453125,"Fan Speed In":3457,"Fan Speed Out":3544,"Power":2980.2,"Power Rate":18.275924682617188,"Pool Rejected%":0,"Uptime":2176399,"Hash Stable":"true","Hash Stable Cost Seconds":1582,"Target Freq":0,"Env Temp":20.812,"Power Mode":"Normal","Factory GHS":183363,"Power Limit":3000,"Chip Temp Min":38.991302490234375,"Chip Temp
+4:14:58 PM [poller-debug] [poller-debug] Stats raw: {"STATUS":"E","When":1771884898,"Code":14,"Msg":"invalid cmd","Description":""}
+4:14:58 PM [poller-debug] [poller-debug] Summary top-level keys: STATUS, When, Code, Msg, Description
+4:14:58 PM [poller-debug] [poller-debug] Stats top-level keys: STATUS, When, Code, Msg, Description
+4:14:58 PM [poller-debug] [poller-debug] === RAW RESPONSE FOR 10.31.184.210 ===
+4:14:58 PM [poller-debug] [poller-debug] Summary raw: {"STATUS":"S","When":1771884898,"Code":131,"Msg":{"Elapsed":27480.232421875,"MHS av":180584288,"MHS 1m":180700272,"MHS 15m":180623328,"HS RT":180700272,"freq_avg":373.17315673828125,"Fan Speed In":3105,"Fan Speed Out":3281,"Power":3395.5733333333333,"Power Rate":18.8138427734375,"Pool Rejected%":0.000925925909541547,"Uptime":2176399,"Hash Stable":"true","Hash Stable Cost Seconds":1323,"Target Freq":0,"Env Temp":20.062,"Power Mode":"Normal","Factory GHS":183252,"Power Limit":3400,"Chip Temp Min":
+4:14:58 PM [poller-debug] [poller-debug] Stats raw: {"STATUS":"E","When":1771884898,"Code":14,"Msg":"invalid cmd","Description":""}
+4:14:58 PM [poller-debug] [poller-debug] Summary top-level keys: STATUS, When, Code, Msg, Description
+4:14:58 PM [poller-debug] [poller-debug] Stats top-level keys: STATUS, When, Code, Msg, Description
+4:14:58 PM [poller-debug] [poller-debug] === RAW RESPONSE FOR 10.31.184.206 ===
+4:14:58 PM [poller-debug] [poller-debug] Summary raw: {"STATUS":"S","When":1771884898,"Code":131,"Msg":{"Elapsed":27678.49609375,"MHS av":190982944,"MHS 1m":191047920,"MHS 15m":190998880,"HS RT":191047920,"freq_avg":387.1467590332031,"Fan Speed In":3837,"Fan Speed Out":3867,"Power":3616.4,"Power Rate":18.939401626586914,"Pool Rejected%":0,"Uptime":2176399,"Hash Stable":"true","Hash Stable Cost Seconds":1115,"Target Freq":0,"Env Temp":20.437,"Power Mode":"Normal","Factory GHS":181296,"Power Limit":3600,"Chip Temp Min":44.52608871459961,"Chip Temp Ma
+4:14:58 PM [poller-debug] [poller-debug] Stats raw: {"STATUS":"E","When":1771884898,"Code":14,"Msg":"invalid cmd","Description":""}
+4:14:58 PM [poller-debug] [poller-debug] Summary top-level keys: STATUS, When, Code, Msg, Description
+4:14:58 PM [poller-debug] [poller-debug] Stats top-level keys: STATUS, When, Code, Msg, Description
+4:14:58 PM [poller-debug] [poller-debug] === RAW RESPONSE FOR 10.31.184.199 ===
+4:14:58 PM [poller-debug] [poller-debug] Summary raw: {"STATUS":"S","When":1771884898,"Code":131,"Msg":{"Elapsed":197540.90625,"MHS av":163979792,"MHS 1m":164246880,"MHS 15m":164009888,"HS RT":164246880,"freq_avg":335.5162658691406,"Fan Speed In":3105,"Fan Speed Out":3193,"Power":2980.36,"Power Rate":18.174266815185547,"Pool Rejected%":0.000690297863911837,"Uptime":10034645,"Hash Stable":"true","Hash Stable Cost Seconds":1167,"Target Freq":0,"Env Temp":19.625,"Power Mode":"Normal","Factory GHS":178812,"Power Limit":3000,"Chip Temp Min":41.460868835
+4:14:58 PM [poller-debug] [poller-debug] Stats raw: {"STATUS":"E","When":1771884898,"Code":14,"Msg":"invalid cmd","Description":""}
+4:14:58 PM [poller-debug] [poller-debug] Summary top-level keys: STATUS, When, Code, Msg, Description
+4:14:58 PM [poller-debug] [poller-debug] Stats top-level keys: STATUS, When, Code, Msg, Description
+4:14:58 PM [poller-debug] [poller-debug] === RAW RESPONSE FOR 10.31.184.180 ===
+4:14:58 PM [poller-debug] [poller-debug] Summary raw: {"STATUS":"S","When":1771884898,"Code":131,"Msg":{"Elapsed":27532.853515625,"MHS av":183412928,"MHS 1m":183187696,"MHS 15m":183371200,"HS RT":183187696,"freq_avg":373.478515625,"Fan Speed In":2727,"Fan Speed Out":2815,"Power":3400.5066666666667,"Power Rate":18.579851150512695,"Pool Rejected%":0.000439174356870353,"Uptime":2176400,"Hash Stable":"true","Hash Stable Cost Seconds":1264,"Target Freq":0,"Env Temp":20.562,"Power Mode":"Normal","Factory GHS":181561,"Power Limit":3400,"Chip Temp Min":49.
+4:14:58 PM [poller-debug] [poller-debug] Stats raw: {"STATUS":"E","When":1771884898,"Code":14,"Msg":"invalid cmd","Description":""}
+4:14:58 PM [poller-debug] [poller-debug] Summary top-level keys: STATUS, When, Code, Msg, Description
+4:14:58 PM [poller-debug] [poller-debug] Stats top-level keys: STATUS, When, Code, Msg, Description

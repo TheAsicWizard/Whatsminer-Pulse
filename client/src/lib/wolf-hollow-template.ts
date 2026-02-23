@@ -50,53 +50,48 @@ function generateDiagonalRowPositions(
 const DIAGONAL_ANGLE = 325;
 
 const allPositions: [string, TemplatePosition][] = [
+  // Diagonal section: 70 containers (C000-C069), 6 rows
+  // 4 rows of 14, then 2 rows of 7
   ...generateDiagonalRowPositions(0, 13, 5, 54, 35, 32, DIAGONAL_ANGLE),
   ...generateDiagonalRowPositions(14, 27, 7.5, 58, 37.5, 36, DIAGONAL_ANGLE),
   ...generateDiagonalRowPositions(28, 41, 10, 62, 40, 40, DIAGONAL_ANGLE),
   ...generateDiagonalRowPositions(42, 55, 13, 67, 43, 44.5, DIAGONAL_ANGLE),
-  ...generateDiagonalRowPositions(56, 63, 15.5, 70, 35, 55.5, DIAGONAL_ANGLE),
-  ...generateDiagonalRowPositions(64, 71, 18.5, 75, 38, 59.5, DIAGONAL_ANGLE),
+  ...generateDiagonalRowPositions(56, 62, 15.5, 70, 32, 58, DIAGONAL_ANGLE),
+  ...generateDiagonalRowPositions(63, 69, 18.5, 75, 35, 62, DIAGONAL_ANGLE),
 
-  ...generateRowPositions(72, 87, 10, 47, 90),
-  ...generateRowPositions(88, 107, 17, 45, 90),
-  ...generateRowPositions(108, 127, 24, 45, 90),
-  ...generateRowPositions(128, 147, 31, 45, 90),
-  ...generateRowPositions(148, 167, 38, 45, 90),
-  ...generateRowPositions(168, 187, 45, 45, 90),
+  // Horizontal section: 214 containers (C070-C284, excluding C246)
+  // Top 10 rows: 14 containers each, paired in enclosures
+  // Pair 1
+  ...generateRowPositions(70, 83, 7, 47, 92),
+  ...generateRowPositions(84, 97, 11, 47, 92),
+  // Pair 2
+  ...generateRowPositions(98, 111, 16, 47, 92),
+  ...generateRowPositions(112, 125, 20, 47, 92),
+  // Pair 3
+  ...generateRowPositions(126, 139, 25, 47, 92),
+  ...generateRowPositions(140, 153, 29, 47, 92),
+  // Pair 4
+  ...generateRowPositions(154, 167, 34, 47, 92),
+  ...generateRowPositions(168, 181, 38, 47, 92),
+  // Pair 5
+  ...generateRowPositions(182, 195, 43, 47, 92),
+  ...generateRowPositions(196, 209, 47, 47, 92),
 
-  ["C188", { x: 92, y: 48, rotation: 0 }],
+  // Middle rows: 12 containers each
+  ...generateRowPositions(210, 221, 53, 50, 90),
+  ...generateRowPositions(222, 233, 58, 50, 90),
 
-  ...generateRowPositions(189, 207, 52, 47, 88),
+  // Narrower rows: 11 containers each
+  ...generateRowPositions(234, 244, 64, 52, 88),
+  ...generateRowPositions(245, 256, 70, 52, 88, 0, [246]),
 
-  ["C208", { x: 91, y: 55, rotation: 0 }],
-  ["C209", { x: 93.5, y: 55, rotation: 0 }],
-  ["C210", { x: 96, y: 55, rotation: 0 }],
+  // Bottom rows: 10 containers each
+  ...generateRowPositions(257, 266, 76, 54, 86),
+  ...generateRowPositions(267, 276, 82, 54, 86),
 
-  ...generateRowPositions(211, 224, 60, 53, 84),
-
-  ["C225", { x: 86, y: 62, rotation: 0 }],
-  ["C226", { x: 88.5, y: 62, rotation: 0 }],
-
-  ...generateRowPositions(227, 242, 68, 53, 86),
-  ...generateRowPositions(243, 252, 75, 56, 82, 0, [246]),
-  ...generateRowPositions(253, 262, 82, 56, 82),
-  ...generateRowPositions(263, 270, 89, 58, 80),
-
-  ["C271", { x: 58, y: 93, rotation: 0 }],
-  ["C272", { x: 61, y: 93, rotation: 0 }],
-  ["C273", { x: 65, y: 93, rotation: 0 }],
-  ["C274", { x: 68, y: 93, rotation: 0 }],
-  ["C275", { x: 72, y: 93, rotation: 0 }],
-  ["C276", { x: 75, y: 93, rotation: 0 }],
-  ["C277", { x: 79, y: 93, rotation: 0 }],
-  ["C278", { x: 82, y: 93, rotation: 0 }],
-
-  ["C279", { x: 58, y: 97, rotation: 0 }],
-  ["C280", { x: 61, y: 97, rotation: 0 }],
-  ["C281", { x: 65, y: 97, rotation: 0 }],
-  ["C282", { x: 68, y: 97, rotation: 0 }],
-  ["C283", { x: 72, y: 97, rotation: 0 }],
-  ["C284", { x: 75, y: 97, rotation: 0 }],
+  // Standalone bottom rows
+  ...generateRowPositions(277, 280, 89, 50, 68),
+  ...generateRowPositions(281, 284, 95, 60, 78),
 ];
 
 const WOLF_HOLLOW_POSITIONS: Record<string, TemplatePosition> = Object.fromEntries(allPositions);

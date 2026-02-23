@@ -101,7 +101,19 @@ export default function MinerDetail() {
               {miner.name}
             </h2>
             <p className="text-xs text-muted-foreground font-mono">
-              {miner.ipAddress}:{miner.port}
+              {miner.ipAddress ? (
+                <a
+                  href={`http://${miner.ipAddress}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-amber-500 hover:text-amber-400 underline"
+                  data-testid="link-miner-ip"
+                >
+                  {miner.ipAddress}:{miner.port}
+                </a>
+              ) : (
+                <span>{miner.ipAddress}:{miner.port}</span>
+              )}
               {miner.location && ` / ${miner.location}`}
             </p>
             {(miner.macAddress || miner.serialNumber) && (

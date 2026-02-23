@@ -201,17 +201,28 @@ export async function registerRoutes(
       scanIpRange(config.id, config.startIp, config.endIp, config.port).then(async (results) => {
         let newMiners = 0;
         let updatedMiners = 0;
+        let macMatched = 0;
         for (const result of results) {
           let existing = await storage.getMinerByIp(result.ip, config.port);
 
           if (result.mac && !existing) {
             existing = await storage.getMinerByMac(result.mac) || undefined;
+            if (!existing) {
+              existing = await storage.findMinerByMacMapping(result.mac) || undefined;
+              if (existing) {
+                console.log(`[scanner] MAC mapping match: ${result.mac} → miner ${existing.id} (${existing.name})`);
+              }
+            }
             if (existing) {
               await storage.updateMiner(existing.id, {
                 ipAddress: result.ip,
+                port: config.port,
+                macAddress: result.mac,
                 status: "online",
+                source: "scanned",
               });
               updatedMiners++;
+              macMatched++;
             }
           }
 
@@ -233,11 +244,13 @@ export async function registerRoutes(
             if (existing.status === "offline") updates.status = "online";
             if (result.mac && !existing.macAddress) updates.macAddress = result.mac;
             if (result.serial && !existing.serialNumber) updates.serialNumber = result.serial;
+            if (existing.source !== "scanned") updates.source = "scanned";
             if (Object.keys(updates).length > 0) {
               await storage.updateMiner(existing.id, updates);
             }
           }
         }
+        console.log(`[scanner] Results: ${results.length} found, ${macMatched} MAC-matched, ${newMiners} new, ${updatedMiners} updated`);
 
         try {
           const macResult = await storage.autoAssignByMac();

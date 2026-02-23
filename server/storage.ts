@@ -77,6 +77,7 @@ export interface IStorage {
   bulkInsertMacLocationMappings(mappings: InsertMacLocationMapping[]): Promise<number>;
   clearMacLocationMappings(): Promise<void>;
   getMinerByMac(macAddress: string): Promise<Miner | undefined>;
+  findMinerByMacMapping(macAddress: string): Promise<Miner | undefined>;
   autoAssignByMac(): Promise<{ assigned: number; created: number; containersCreated: number }>;
 
   getSiteSettings(): Promise<SiteSettings | undefined>;
@@ -632,6 +633,28 @@ export class DatabaseStorage implements IStorage {
       sql`replace(replace(lower(${miners.macAddress}), ':', ''), '-', '') = ${stripped}`
     );
     return results[0];
+  }
+
+  async findMinerByMacMapping(macAddress: string): Promise<Miner | undefined> {
+    const stripped = normalizeMac(macAddress);
+    const mappingResults = await db.select().from(macLocationMappings).where(
+      sql`replace(replace(lower(${macLocationMappings.macAddress}), ':', ''), '-', '') = ${stripped}`
+    );
+    if (mappingResults.length === 0) return undefined;
+    const mapping = mappingResults[0];
+
+    const slot = (mapping.row - 1) * 4 + mapping.col;
+    const allContainers = await db.select().from(containers);
+    const container = allContainers.find(c => c.name === mapping.containerName);
+    if (!container) return undefined;
+
+    const assignments = await db.select().from(slotAssignments).where(
+      sql`${slotAssignments.containerId} = ${container.id} AND ${slotAssignments.rack} = ${mapping.rack} AND ${slotAssignments.slot} = ${slot}`
+    );
+    if (assignments.length === 0 || !assignments[0].minerId) return undefined;
+
+    const minerResults = await db.select().from(miners).where(eq(miners.id, assignments[0].minerId));
+    return minerResults[0];
   }
 
   async autoAssignByMac(): Promise<{ assigned: number; created: number; containersCreated: number }> {

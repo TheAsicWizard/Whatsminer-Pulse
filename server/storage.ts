@@ -701,9 +701,10 @@ export class DatabaseStorage implements IStorage {
 
       if (minersToCreate.length > 0) {
         const newMinerValues = minersToCreate.map(({ mapping, container }) => {
-          const location = `${container.name}-R${String(mapping.rack).padStart(2, "0")}-${mapping.row}.${mapping.col}`;
+          const slot = (mapping.row - 1) * 4 + mapping.col;
+          const location = `${container.name}-R${String(mapping.rack).padStart(2, "0")}-S${String(slot).padStart(2, "0")}`;
           return {
-            name: `${container.name}-R${String(mapping.rack).padStart(2, "0")}-S${String((mapping.row - 1) * 4 + mapping.col).padStart(2, "0")}`,
+            name: location,
             ipAddress: "",
             macAddress: mapping.macAddress,
             model: mapping.minerType || "WhatsMiner",
@@ -715,25 +716,22 @@ export class DatabaseStorage implements IStorage {
 
         const createdMiners = await db.insert(miners).values(newMinerValues).returning();
 
-        const slotValues = createdMiners.map((miner, idx) => {
+        for (let idx = 0; idx < createdMiners.length; idx++) {
+          const miner = createdMiners[idx];
           const { mapping, container } = minersToCreate[idx];
           const slot = (mapping.row - 1) * 4 + mapping.col;
-          return { containerId: container.id, rack: mapping.rack, slot, minerId: miner.id };
-        });
-        await db.insert(slotAssignments).values(slotValues).onConflictDoNothing();
+          await this.assignMinerToSlot(container.id, mapping.rack, slot, miner.id);
+          if (miner.macAddress) minerByMac.set(normalizeMac(miner.macAddress), miner);
+        }
 
         created += createdMiners.length;
         assigned += createdMiners.length;
-
-        for (const m of createdMiners) {
-          if (m.macAddress) minerByMac.set(normalizeMac(m.macAddress), m);
-        }
       }
 
       for (const { mapping, container, miner } of minersToAssign) {
         const slot = (mapping.row - 1) * 4 + mapping.col;
         await this.assignMinerToSlot(container.id, mapping.rack, slot, miner.id);
-        const location = `${container.name}-R${String(mapping.rack).padStart(2, "0")}-${mapping.row}.${mapping.col}`;
+        const location = `${container.name}-R${String(mapping.rack).padStart(2, "0")}-S${String(slot).padStart(2, "0")}`;
         await this.updateMiner(miner.id, { location });
         assigned++;
       }

@@ -62,20 +62,13 @@ app.use((req, res, next) => {
 
 (async () => {
   const { seedDatabase } = await import("./seed");
-  const { startSimulation } = await import("./simulation");
   const { startRealPoller } = await import("./poller");
 
   try {
     await import("./db");
     const { execSync } = await import("child_process");
     execSync("npx drizzle-kit push --force", { stdio: "inherit" });
-    const skipSeed = process.env.SKIP_SEED === "true";
-    if (skipSeed) {
-      log("SKIP_SEED=true — skipping demo data and simulation", "seed");
-    } else {
-      await seedDatabase();
-      startSimulation();
-    }
+    await seedDatabase();
     startRealPoller();
   } catch (err) {
     console.error("Database setup error:", err);

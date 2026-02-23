@@ -170,8 +170,6 @@ function generateMinersForContainer(
 }
 
 export async function seedDatabase() {
-  const isReplit = !!process.env.REPL_ID;
-
   const existingContainers = await db.select({ count: sql<number>`count(*)::int` }).from(containers);
   if (existingContainers[0].count > 0) {
     log("Database already seeded, skipping", "seed");
@@ -220,89 +218,6 @@ export async function seedDatabase() {
     { name: "High Rejection Rate", metric: "poolRejectedPct", operator: ">", threshold: 2, severity: "warning", enabled: true },
   ]);
 
-  let totalMinersCreated = 0;
-
-  if (isReplit) {
-    log("Replit environment detected — generating simulated miner data...", "seed");
-    const allCreatedMiners: Array<{ id: string; model: string; status: string; containerId: string; rack: number; slot: number }> = [];
-
-    for (const containerDef of createdContainers) {
-      const minerDataList = generateMinersForContainer(
-        containerDef.name,
-        containerDef.model,
-        containerDef.capacity,
-        containerDef.ipStart,
-        containerDef.ipEnd
-      );
-
-      const batchSize = 50;
-      for (let i = 0; i < minerDataList.length; i += batchSize) {
-        const batch = minerDataList.slice(i, i + batchSize);
-        const created = await db.insert(miners).values(batch).returning();
-
-        for (let j = 0; j < created.length; j++) {
-          const miner = created[j];
-          const idx = i + j;
-          const rack = Math.floor(idx / SLOTS_PER_RACK) + 1;
-          const slot = (idx % SLOTS_PER_RACK) + 1;
-
-          allCreatedMiners.push({
-            id: miner.id,
-            model: miner.model || "WhatsMiner M60S",
-            status: miner.status,
-            containerId: containerDef.id,
-            rack,
-            slot,
-          });
-        }
-      }
-
-      totalMinersCreated += minerDataList.length;
-      if (totalMinersCreated % 1000 === 0 || totalMinersCreated === minerDataList.length) {
-        log(`Created ${totalMinersCreated} miners so far...`, "seed");
-      }
-    }
-    log(`Created ${totalMinersCreated} total simulated miners`, "seed");
-
-    log("Creating slot assignments...", "seed");
-    const assignBatchSize = 100;
-    for (let i = 0; i < allCreatedMiners.length; i += assignBatchSize) {
-      const batch = allCreatedMiners.slice(i, i + assignBatchSize).map((m) => ({
-        containerId: m.containerId,
-        rack: m.rack,
-        slot: m.slot,
-        minerId: m.id,
-      }));
-      await db.insert(slotAssignments).values(batch);
-    }
-    log(`Created ${allCreatedMiners.length} slot assignments`, "seed");
-
-    log("Generating initial snapshots (latest only)...", "seed");
-    for (let i = 0; i < allCreatedMiners.length; i += assignBatchSize) {
-      const batch = allCreatedMiners.slice(i, i + assignBatchSize).map((m) =>
-        generateSnapshot(m.id, m.model, m.status, 0)
-      );
-      await db.insert(minerSnapshots).values(batch);
-    }
-    log("Initial snapshots created", "seed");
-
-    const criticalMiners = allCreatedMiners.filter((m) => m.status === "critical").slice(0, 5);
-    const warningMiners = allCreatedMiners.filter((m) => m.status === "warning").slice(0, 5);
-
-    const alertValues = [];
-    for (const m of criticalMiners) {
-      alertValues.push({ minerId: m.id, severity: "critical", message: `Board temperature exceeds 85°C`, acknowledged: false });
-    }
-    for (const m of warningMiners) {
-      alertValues.push({ minerId: m.id, severity: "warning", message: `Hashrate below expected threshold`, acknowledged: false });
-    }
-    if (alertValues.length > 0) {
-      await db.insert(alerts).values(alertValues);
-    }
-  } else {
-    log("Local environment — skipping simulated miner data (containers and layouts only)", "seed");
-  }
-
   const layoutMap = containerLayouts.layouts as Record<string, { x: number; y: number; rotation: number }>;
   let layoutsApplied = 0;
   for (const cDef of allCreatedContainerIds) {
@@ -320,5 +235,5 @@ export async function seedDatabase() {
     containerScale: containerLayouts.containerScale,
   });
 
-  log(`Seed complete: ${allCreatedContainerIds.length} containers, ${totalMinersCreated} miners, ${layoutsApplied} layouts applied`, "seed");
+  log(`Seed complete: ${allCreatedContainerIds.length} containers, ${layoutsApplied} layouts applied`, "seed");
 }

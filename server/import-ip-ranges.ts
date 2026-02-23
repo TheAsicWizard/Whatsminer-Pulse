@@ -103,9 +103,9 @@ async function main() {
     const params: any[] = [];
     for (let j = 0; j < toInsert.length; j++) {
       const c = toInsert[j];
-      const offset = j * 4;
-      values.push(`(gen_random_uuid(), $${offset + 1}, $${offset + 2}, $${offset + 3}, $${offset + 4}, 4028, true, NOW())`);
-      params.push(c.label, c.startIp, c.endIp, true);
+      const offset = j * 3;
+      values.push(`(gen_random_uuid(), $${offset + 1}, $${offset + 2}, $${offset + 3}, 4028, true, NOW())`);
+      params.push(c.label, c.startIp, c.endIp);
     }
 
     await pool.query(

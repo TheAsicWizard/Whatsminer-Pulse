@@ -1,0 +1,60 @@
+PS C:\Users\KoreeCaraway\Downloads\Whatsminer-Pulse> git pull origin main
+remote: Enumerating objects: 6, done.
+remote: Counting objects: 100% (6/6), done.
+remote: Compressing objects: 100% (4/4), done.
+remote: Total 4 (delta 2), reused 0 (delta 0), pack-reused 0 (from 0)
+Unpacking objects: 100% (4/4), 1.41 KiB | 111.00 KiB/s, done.
+From https://github.com/TheAsicWizard/Whatsminer-Pulse
+ * branch            main       -> FETCH_HEAD
+   dc9b3a1..f7c68ad  main       -> origin/main
+Updating dc9b3a1..f7c68ad
+Fast-forward
+ server/diagnose.ts | 92 ++++++++++++++++++++++++++++++++++++++++++++++++++++++
+ 1 file changed, 92 insertions(+)
+ create mode 100644 server/diagnose.ts
+PS C:\Users\KoreeCaraway\Downloads\Whatsminer-Pulse> $env:DATABASE_URL="postgresql://postgres:postgres@localhost:5432/whatsminer_pulse"; npx tsx server/diagnose.ts
+=== DIAGNOSTIC REPORT ===
+
+Total miners: 22632
+
+Miners by source/status:
+  csv / offline: 22497
+  scanned / online: 134
+  scanned / warning: 1
+
+Total slot_assignments: 22497
+Slot assignments with miner_id: 22497
+Orphan slot assignments (miner_id doesn't exist): 0
+Orphan slot assignments (container_id doesn't exist): 0
+
+Total containers: 284
+Total MAC location mappings: 22497
+
+Sample MAC mappings:
+  MAC: cc:0c:15:00:61:23 → C260 R10 row=5 col=2
+  MAC: cc:0c:15:00:21:33 → C260 R10 row=5 col=1
+  MAC: cc:0c:15:00:02:a4 → C255 R14 row=4 col=4
+
+Miners with MAC address set: 22497
+
+Sample miners with MAC:
+  C188-R01-S02 | IP:  | MAC: ce:02:01:00:62:f7 | source: csv | status: offline
+  C188-R01-S03 | IP:  | MAC: ce:02:01:00:17:74 | source: csv | status: offline
+  C188-R01-S04 | IP:  | MAC: ce:02:01:00:17:8b | source: csv | status: offline
+
+Sample miners WITHOUT MAC:
+  WhatsMiner M50 @ 10.31.184.16 | IP: 10.31.184.16 | source: scanned | status: online
+  WhatsMiner M50 @ 10.31.184.14 | IP: 10.31.184.14 | source: scanned | status: online
+  WhatsMiner M50 @ 10.31.184.157 | IP: 10.31.184.157 | source: scanned | status: online
+
+Top containers by slot assignment count:
+  C280: 486 slots
+  C226: 486 slots
+  C275: 486 slots
+  C267: 486 slots
+  C264: 486 slots
+
+Total snapshots: 2160
+Miners with latest_snapshot_id: 135
+
+=== END DIAGNOSTIC ===

@@ -72,7 +72,28 @@ function queryCgminerApi(host: string, port: number, command: string): Promise<a
   });
 }
 
+function findMacInObject(obj: any): string | undefined {
+  if (!obj || typeof obj !== "object") return undefined;
+  const macKeys = ["MAC", "Mac", "mac", "MacAddr", "mac_addr", "MacAddress", "mac_address"];
+  for (const key of macKeys) {
+    if (obj[key] && typeof obj[key] === "string" && obj[key].includes(":")) {
+      return obj[key].toLowerCase();
+    }
+  }
+  for (const key of Object.keys(obj)) {
+    const val = obj[key];
+    if (typeof val === "string" && /^([0-9a-fA-F]{2}:){5}[0-9a-fA-F]{2}$/.test(val)) {
+      return val.toLowerCase();
+    }
+  }
+  return undefined;
+}
+
+let probeDebugCount = 0;
+
 async function probeMiner(ip: string, port: number): Promise<ScanResult> {
+  const shouldDebug = probeDebugCount < 5;
+
   try {
     const summary = await queryCgminerApi(ip, port, "summary");
     
@@ -80,6 +101,10 @@ async function probeMiner(ip: string, port: number): Promise<ScanResult> {
     let model = "WhatsMiner";
     let mac: string | undefined;
     let serial: string | undefined;
+
+    if (shouldDebug) {
+      log(`[probe-debug] ${ip} summary keys: ${JSON.stringify(Object.keys(summary || {}))}`, "scanner");
+    }
 
     let s: any = null;
     if (summary?.SUMMARY?.[0]) {
@@ -99,34 +124,84 @@ async function probeMiner(ip: string, port: number): Promise<ScanResult> {
         else model = `WhatsMiner (${fGhs} GH/s)`;
       }
 
-      if (s["MAC"]) mac = s["MAC"].toLowerCase();
+      mac = findMacInObject(s);
+      if (shouldDebug && !mac) {
+        const summaryKeys = Object.keys(s).filter(k => /mac|addr|net/i.test(k));
+        log(`[probe-debug] ${ip} summary MAC-related keys: ${JSON.stringify(summaryKeys)} | all keys: ${Object.keys(s).join(",")}`, "scanner");
+      }
     }
 
     try {
       const stats = await queryCgminerApi(ip, port, "stats");
       if (stats?.STATS) {
         for (const stat of stats.STATS) {
-          if (stat.Type) {
-            model = `WhatsMiner ${stat.Type}`;
-          }
-          if (stat["Mac"] && !mac) mac = stat["Mac"].toLowerCase();
+          if (stat.Type) model = `WhatsMiner ${stat.Type}`;
+          if (!mac) mac = findMacInObject(stat);
           if (stat["Serial Number"] && !serial) serial = stat["Serial Number"];
         }
       }
-    } catch {
+      if (shouldDebug && !mac && stats?.STATS?.[0]) {
+        const statKeys = Object.keys(stats.STATS[0]).filter(k => /mac|addr|net/i.test(k));
+        log(`[probe-debug] ${ip} stats MAC-related keys: ${JSON.stringify(statKeys)}`, "scanner");
+      }
+    } catch (e: any) {
+      if (shouldDebug) log(`[probe-debug] ${ip} stats failed: ${e.message}`, "scanner");
     }
 
     if (!mac) {
       try {
         const minerInfo = await queryCgminerApi(ip, port, "get_miner_info");
-        if (minerInfo?.Msg) {
-          const msg = minerInfo.Msg;
-          if (msg["Mac"]) mac = msg["Mac"].toLowerCase();
-          if (msg["MacAddr"]) mac = msg["MacAddr"].toLowerCase();
-          if (msg["SerialNo"]) serial = msg["SerialNo"];
+        if (shouldDebug) {
+          log(`[probe-debug] ${ip} get_miner_info response: ${JSON.stringify(minerInfo).substring(0, 500)}`, "scanner");
         }
-      } catch {
+        if (minerInfo?.Msg) {
+          const msg = typeof minerInfo.Msg === "string" ? {} : minerInfo.Msg;
+          mac = findMacInObject(msg);
+          if (!serial && msg["SerialNo"]) serial = msg["SerialNo"];
+        }
+        if (!mac) {
+          mac = findMacInObject(minerInfo);
+        }
+      } catch (e: any) {
+        if (shouldDebug) log(`[probe-debug] ${ip} get_miner_info failed: ${e.message}`, "scanner");
       }
+    }
+
+    if (!mac) {
+      try {
+        const devs = await queryCgminerApi(ip, port, "devs");
+        if (shouldDebug) {
+          log(`[probe-debug] ${ip} devs response: ${JSON.stringify(devs).substring(0, 500)}`, "scanner");
+        }
+        if (devs?.DEVS) {
+          for (const dev of devs.DEVS) {
+            if (!mac) mac = findMacInObject(dev);
+          }
+        }
+      } catch (e: any) {
+        if (shouldDebug) log(`[probe-debug] ${ip} devs failed: ${e.message}`, "scanner");
+      }
+    }
+
+    if (!mac) {
+      try {
+        const edevs = await queryCgminerApi(ip, port, "edevs");
+        if (shouldDebug) {
+          log(`[probe-debug] ${ip} edevs response: ${JSON.stringify(edevs).substring(0, 500)}`, "scanner");
+        }
+        if (edevs?.DEVS) {
+          for (const dev of edevs.DEVS) {
+            if (!mac) mac = findMacInObject(dev);
+          }
+        }
+      } catch (e: any) {
+        if (shouldDebug) log(`[probe-debug] ${ip} edevs failed: ${e.message}`, "scanner");
+      }
+    }
+
+    if (shouldDebug) {
+      probeDebugCount++;
+      log(`[probe-debug] ${ip} RESULT: mac=${mac || "NOT FOUND"}, model=${model}, serial=${serial || "none"}`, "scanner");
     }
 
     return {

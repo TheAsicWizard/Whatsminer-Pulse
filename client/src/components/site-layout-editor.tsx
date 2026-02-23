@@ -491,7 +491,7 @@ export default function SiteLayoutEditor() {
                     >
                       <div
                         className={`
-                          px-1.5 py-0.5 rounded text-[8px] font-bold cursor-pointer whitespace-nowrap
+                          px-0.5 py-px rounded text-[4px] font-bold cursor-pointer whitespace-nowrap
                           transition-all
                           ${isSelected
                             ? "bg-primary text-primary-foreground ring-2 ring-primary ring-offset-1 ring-offset-background"

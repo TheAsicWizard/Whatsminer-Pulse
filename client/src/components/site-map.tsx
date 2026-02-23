@@ -426,8 +426,8 @@ function ContainerBlock({ container, onClick, compact }: { container: ContainerS
           onClick={(e) => { e.stopPropagation(); onClick(); }}
           className={cn("group relative flex flex-col items-center transition-all duration-200", !compact && "hover:scale-105")}
           style={{
-            width: compact ? "54px" : "100px",
-            height: compact ? "16px" : "68px",
+            width: compact ? "24px" : "100px",
+            height: compact ? "10px" : "68px",
             cursor: "pointer",
           }}
           data-testid={`container-block-${container.id}`}
@@ -442,7 +442,7 @@ function ContainerBlock({ container, onClick, compact }: { container: ContainerS
           >
             <div className={cn("relative flex items-center justify-center h-full", compact ? "px-0.5" : "flex-col gap-0.5 px-1")}>
               <span
-                className={cn("font-bold font-mono text-white/90 leading-none drop-shadow-sm", compact ? "text-[8px] tracking-tight" : "text-[11px] tracking-wide")}
+                className={cn("font-bold font-mono text-white/90 leading-none drop-shadow-sm", compact ? "text-[4px] tracking-tight" : "text-[11px] tracking-wide")}
               >
                 {container.name}
               </span>

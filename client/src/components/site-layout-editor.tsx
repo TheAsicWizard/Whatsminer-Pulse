@@ -10,7 +10,6 @@ import { useToast } from "@/hooks/use-toast";
 import {
   Upload,
   RotateCw,
-  Save,
   Trash2,
   MapPin,
   Check,
@@ -32,7 +31,7 @@ export default function SiteLayoutEditor() {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [layouts, setLayouts] = useState<Map<string, { x: number; y: number; rotation: number }>>(new Map());
-  const [isDirty, setIsDirty] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
   const [currentRotation, setCurrentRotation] = useState(0);
   const [placementHistory, setPlacementHistory] = useState<string[]>([]);
   const [skippedIds, setSkippedIds] = useState<Set<string>>(new Set());
@@ -91,33 +90,32 @@ export default function SiteLayoutEditor() {
     },
   });
 
-  const saveMutation = useMutation({
-    mutationFn: async () => {
-      const layoutArray = Array.from(layouts.entries()).map(([id, pos]) => ({
-        id,
-        layoutX: pos.x,
-        layoutY: pos.y,
-        layoutRotation: pos.rotation,
-      }));
-      const unplacedIds = containers.filter((c) => !layouts.has(c.id)).map((c) => c.id);
-      const allLayouts = [
-        ...layoutArray,
-        ...unplacedIds.map((id) => ({ id, layoutX: null, layoutY: null, layoutRotation: null })),
-      ];
-      await apiRequest("POST", "/api/containers/layouts", { layouts: allLayouts });
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/containers"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/containers/list"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/containers/summary"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/site-settings"] });
-      setIsDirty(false);
-      toast({ title: "Layout saved", description: `${layouts.size} container positions saved.` });
-    },
-    onError: () => {
-      toast({ title: "Save failed", variant: "destructive" });
-    },
-  });
+  const pendingSavesRef = useRef(0);
+
+  const invalidateLayoutQueries = useCallback(() => {
+    queryClient.invalidateQueries({ queryKey: ["/api/containers"] });
+    queryClient.invalidateQueries({ queryKey: ["/api/containers/list"] });
+    queryClient.invalidateQueries({ queryKey: ["/api/containers/summary"] });
+    queryClient.invalidateQueries({ queryKey: ["/api/site-settings"] });
+  }, []);
+
+  const saveContainerLayout = useCallback(async (containerId: string, layoutX: number | null, layoutY: number | null, layoutRotation: number | null) => {
+    pendingSavesRef.current++;
+    setIsSaving(true);
+    try {
+      await apiRequest("POST", "/api/containers/layouts", {
+        layouts: [{ id: containerId, layoutX, layoutY, layoutRotation }],
+      });
+      invalidateLayoutQueries();
+    } catch {
+      toast({ title: "Auto-save failed", variant: "destructive" });
+    } finally {
+      pendingSavesRef.current--;
+      if (pendingSavesRef.current === 0) {
+        setIsSaving(false);
+      }
+    }
+  }, [toast, invalidateLayoutQueries]);
 
   const removeBackgroundMutation = useMutation({
     mutationFn: async () => {
@@ -144,7 +142,6 @@ export default function SiteLayoutEditor() {
       setLayouts(new Map());
       setPlacementHistory([]);
       setSkippedIds(new Set());
-      setIsDirty(false);
       setSelectedContainerId(null);
       queryClient.invalidateQueries({ queryKey: ["/api/containers"] });
       queryClient.invalidateQueries({ queryKey: ["/api/containers/list"] });
@@ -228,16 +225,20 @@ export default function SiteLayoutEditor() {
         setPlacementHistory((prev) => [...prev, nextContainer.id]);
         setSelectedContainerId(nextContainer.id);
         setCurrentRotation(rotation);
-        setIsDirty(true);
+        saveContainerLayout(nextContainer.id, pos.x, pos.y, rotation);
       }
     },
-    [nextContainer, currentRotation, isPanning, screenToImagePercent]
+    [nextContainer, currentRotation, isPanning, screenToImagePercent, saveContainerLayout]
   );
 
   const handleUndo = () => {
     if (placementHistory.length === 0) return;
     const lastId = placementHistory[placementHistory.length - 1];
     const lastPos = layouts.get(lastId);
+    if (saveTimeoutRef.current) {
+      clearTimeout(saveTimeoutRef.current);
+      saveTimeoutRef.current = null;
+    }
     setLayouts((prev) => {
       const next = new Map(prev);
       next.delete(lastId);
@@ -248,7 +249,7 @@ export default function SiteLayoutEditor() {
     }
     setPlacementHistory((prev) => prev.slice(0, -1));
     setSelectedContainerId(null);
-    setIsDirty(true);
+    saveContainerLayout(lastId, null, null, null);
   };
 
   const handleSkip = () => {
@@ -260,20 +261,32 @@ export default function SiteLayoutEditor() {
     });
   };
 
+  const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   const handleRotationChange = (containerId: string, rotation: number) => {
-    setLayouts((prev) => {
-      const next = new Map(prev);
-      const existing = next.get(containerId);
-      if (existing) {
+    const existing = layouts.get(containerId);
+    if (existing) {
+      setLayouts((prev) => {
+        const next = new Map(prev);
         next.set(containerId, { ...existing, rotation });
-      }
-      return next;
-    });
+        return next;
+      });
+    }
     setCurrentRotation(rotation);
-    setIsDirty(true);
+    if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
+    saveTimeoutRef.current = setTimeout(() => {
+      const pos = layouts.get(containerId);
+      if (pos) {
+        saveContainerLayout(containerId, pos.x, pos.y, rotation);
+      }
+    }, 500);
   };
 
   const handleRemoveFromLayout = (containerId: string) => {
+    if (saveTimeoutRef.current) {
+      clearTimeout(saveTimeoutRef.current);
+      saveTimeoutRef.current = null;
+    }
     setLayouts((prev) => {
       const next = new Map(prev);
       next.delete(containerId);
@@ -281,7 +294,7 @@ export default function SiteLayoutEditor() {
     });
     setPlacementHistory((prev) => prev.filter((id) => id !== containerId));
     if (selectedContainerId === containerId) setSelectedContainerId(null);
-    setIsDirty(true);
+    saveContainerLayout(containerId, null, null, null);
   };
 
   const backgroundImage = siteSettings?.backgroundImage;
@@ -330,16 +343,11 @@ export default function SiteLayoutEditor() {
               Remove Background
             </Button>
           )}
-          {isDirty && (
-            <Button
-              size="sm"
-              onClick={() => saveMutation.mutate()}
-              disabled={saveMutation.isPending}
-              data-testid="button-save-layout"
-            >
-              {saveMutation.isPending ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Save className="h-4 w-4 mr-2" />}
-              Save Layout
-            </Button>
+          {isSaving && (
+            <Badge variant="secondary" className="gap-1">
+              <Loader2 className="h-3 w-3 animate-spin" />
+              Saving...
+            </Badge>
           )}
           {placedCount > 0 && (
             <Button

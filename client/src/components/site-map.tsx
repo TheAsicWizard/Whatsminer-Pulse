@@ -269,7 +269,7 @@ export function ContainerSummaryMap({ containers, onAssignSlot, onSwapSlot, onUn
         ref={viewportRef}
         className="relative overflow-hidden rounded-lg border border-border/50 select-none"
         style={{
-          height: "420px",
+          height: "520px",
           background: "linear-gradient(135deg, hsl(220, 15%, 8%) 0%, hsl(220, 12%, 11%) 50%, hsl(220, 15%, 8%) 100%)",
           cursor: isPanning ? "grabbing" : "grab",
         }}
@@ -390,8 +390,8 @@ function ContainerBlock({ container, onClick, compact }: { container: ContainerS
           onClick={(e) => { e.stopPropagation(); onClick(); }}
           className="group relative flex flex-col items-center transition-all duration-200 hover:scale-105"
           style={{
-            width: compact ? "36px" : "100px",
-            height: compact ? "18px" : "68px",
+            width: compact ? "12px" : "100px",
+            height: compact ? "28px" : "68px",
             cursor: "pointer",
           }}
           data-testid={`container-block-${container.id}`}
@@ -410,8 +410,11 @@ function ContainerBlock({ container, onClick, compact }: { container: ContainerS
               }}
             />
 
-            <div className={cn("relative flex flex-col items-center justify-center h-full gap-0.5", compact ? "px-0.5" : "px-1")}>
-              <span className={cn("font-bold font-mono text-white/90 leading-none tracking-wide drop-shadow-sm", compact ? "text-[7px]" : "text-[11px]")}>
+            <div className={cn("relative flex flex-col items-center justify-center h-full gap-0.5", compact ? "px-0" : "px-1")}>
+              <span
+                className={cn("font-bold font-mono text-white/90 leading-none drop-shadow-sm", compact ? "text-[5px] tracking-tight" : "text-[11px] tracking-wide")}
+                style={compact ? { writingMode: "vertical-rl", textOrientation: "mixed", transform: "rotate(180deg)", letterSpacing: "-0.5px" } : undefined}
+              >
                 {container.name}
               </span>
 

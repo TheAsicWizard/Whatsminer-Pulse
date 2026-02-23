@@ -50,37 +50,37 @@ function generateDiagonalRowPositions(
 const DIAGONAL_ANGLE = 325;
 
 const allPositions: [string, TemplatePosition][] = [
-  ...generateDiagonalRowPositions(0, 13, 8.5, 52, 36.5, 32, DIAGONAL_ANGLE),
-  ...generateDiagonalRowPositions(14, 27, 11, 55, 38.5, 36, DIAGONAL_ANGLE),
-  ...generateDiagonalRowPositions(28, 41, 14, 59, 41.5, 39, DIAGONAL_ANGLE),
-  ...generateDiagonalRowPositions(42, 55, 17.5, 63, 44, 42, DIAGONAL_ANGLE),
-  ...generateDiagonalRowPositions(56, 63, 20, 66.5, 39, 53.5, DIAGONAL_ANGLE),
-  ...generateDiagonalRowPositions(64, 71, 23, 72, 42, 58, DIAGONAL_ANGLE),
+  ...generateDiagonalRowPositions(0, 13, 5, 54, 35, 32, DIAGONAL_ANGLE),
+  ...generateDiagonalRowPositions(14, 27, 7.5, 58, 37.5, 36, DIAGONAL_ANGLE),
+  ...generateDiagonalRowPositions(28, 41, 10, 62, 40, 40, DIAGONAL_ANGLE),
+  ...generateDiagonalRowPositions(42, 55, 13, 67, 43, 44.5, DIAGONAL_ANGLE),
+  ...generateDiagonalRowPositions(56, 63, 15.5, 70, 35, 55.5, DIAGONAL_ANGLE),
+  ...generateDiagonalRowPositions(64, 71, 18.5, 75, 38, 59.5, DIAGONAL_ANGLE),
 
-  ...generateRowPositions(72, 87, 24.2, 48, 89),
-  ...generateRowPositions(88, 107, 28.5, 46, 89),
-  ...generateRowPositions(108, 127, 33.2, 46, 89),
-  ...generateRowPositions(128, 147, 38.0, 46, 89),
-  ...generateRowPositions(148, 167, 44.5, 46, 89),
-  ...generateRowPositions(168, 187, 49.5, 46, 89),
+  ...generateRowPositions(72, 87, 10, 47, 90),
+  ...generateRowPositions(88, 107, 17, 45, 90),
+  ...generateRowPositions(108, 127, 24, 45, 90),
+  ...generateRowPositions(128, 147, 31, 45, 90),
+  ...generateRowPositions(148, 167, 38, 45, 90),
+  ...generateRowPositions(168, 187, 45, 45, 90),
 
-  ["C188", { x: 90.5, y: 52, rotation: 90 }],
+  ["C188", { x: 92, y: 48, rotation: 90 }],
 
-  ...generateRowPositions(189, 207, 56, 51, 87),
+  ...generateRowPositions(189, 207, 52, 47, 88),
 
-  ["C208", { x: 89, y: 58, rotation: 90 }],
-  ["C209", { x: 90.5, y: 58, rotation: 90 }],
-  ["C210", { x: 92, y: 58, rotation: 90 }],
+  ["C208", { x: 91, y: 55, rotation: 90 }],
+  ["C209", { x: 93.5, y: 55, rotation: 90 }],
+  ["C210", { x: 96, y: 55, rotation: 90 }],
 
-  ...generateRowPositions(211, 224, 63, 56, 83),
+  ...generateRowPositions(211, 224, 60, 53, 84),
 
-  ["C225", { x: 85, y: 64, rotation: 90 }],
-  ["C226", { x: 86.5, y: 64, rotation: 90 }],
+  ["C225", { x: 86, y: 62, rotation: 90 }],
+  ["C226", { x: 88.5, y: 62, rotation: 90 }],
 
-  ...generateRowPositions(227, 242, 69.5, 56, 84),
-  ...generateRowPositions(243, 252, 73, 59, 82, 0, [246]),
-  ...generateRowPositions(253, 262, 77.5, 59, 82),
-  ...generateRowPositions(263, 270, 83, 61, 80),
+  ...generateRowPositions(227, 242, 68, 53, 86),
+  ...generateRowPositions(243, 252, 75, 56, 82, 0, [246]),
+  ...generateRowPositions(253, 262, 82, 56, 82),
+  ...generateRowPositions(263, 270, 89, 58, 80),
 ];
 
 const WOLF_HOLLOW_POSITIONS: Record<string, TemplatePosition> = Object.fromEntries(allPositions);

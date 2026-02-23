@@ -6,6 +6,7 @@ import { z, ZodError } from "zod";
 import { scanIpRange, getScanProgress } from "./scanner";
 import multer from "multer";
 import { openai } from "./replit_integrations/image/client";
+import Anthropic from "@anthropic-ai/sdk";
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 50 * 1024 * 1024 } });
 
@@ -640,44 +641,59 @@ export async function registerRoutes(
       const containerMap = new Map(allContainers.map((c) => [c.name, c]));
       const imageData = settings.backgroundImage;
 
+      const anthropic = new Anthropic({
+        apiKey: process.env.AI_INTEGRATIONS_ANTHROPIC_API_KEY,
+        baseURL: process.env.AI_INTEGRATIONS_ANTHROPIC_BASE_URL,
+      });
+
       const totalContainers = containerNames.length;
-      const prompt = `Look at this aerial/satellite image of a mining site. It contains rectangular shipping containers arranged in groups/rows.
+      const prompt = `You are analyzing a site layout image of a mining facility. The image shows rectangular shipping containers arranged in groups/rows, each labeled with a name like C000, C001, C210, etc.
 
-Your task: identify each visible container structure and estimate its position as percentage coordinates (0-100 for x and y, where 0,0 is top-left).
+Your task: Read the container labels visible in the image and determine each container's position as percentage coordinates (0-100 for both x and y, where 0,0 is the top-left corner of the image and 100,100 is the bottom-right).
 
-There are ${totalContainers} containers to locate, named: ${containerNames.slice(0, 10).join(", ")}, ... ${containerNames.slice(-5).join(", ")}
+There are ${totalContainers} containers total, named: ${containerNames.slice(0, 15).join(", ")}, ... ${containerNames.slice(-10).join(", ")}
 
-Instructions:
-1. Identify distinct groups of containers in the image
-2. For each group, note its position, orientation angle, and count of containers
-3. Assign container names sequentially (C000, C001, ...) to positions, working top-to-bottom, left-to-right within each group
-4. Each container needs: name, x (0-100), y (0-100), rotation (degrees, 0=horizontal)
+For each container you can identify in the image:
+- Read its label text (e.g. "C210", "C001")
+- Estimate x: horizontal position as percentage (0=left edge, 100=right edge)
+- Estimate y: vertical position as percentage (0=top edge, 100=bottom edge)
+- Estimate rotation: angle in degrees the container row is rotated (0=horizontal, positive=clockwise). Containers in diagonal rows share the same rotation angle.
 
-Return ONLY a JSON array. No markdown, no explanation.
-Format: [{"name":"C000","x":5.2,"y":54.1,"rotation":0}]
+IMPORTANT: Read the actual text labels on the containers. Do NOT guess or make up names. Only include containers whose labels you can actually read in the image.
 
-If you cannot identify individual containers, return your best estimate of where groups of containers are located and distribute the container names evenly within those groups.`;
+Return ONLY a valid JSON array. No explanation, no markdown code fences.
+Example: [{"name":"C210","x":85.2,"y":54.1,"rotation":0},{"name":"C001","x":12.4,"y":62.0,"rotation":-35}]`;
 
-      const response = await openai.chat.completions.create({
-        model: "gpt-4o",
+      const base64Match = imageData.match(/^data:([^;]+);base64,(.+)$/);
+      if (!base64Match) {
+        return res.status(400).json({ message: "Invalid image format. Expected base64 data URL." });
+      }
+      const mediaType = base64Match[1] as "image/png" | "image/jpeg" | "image/gif" | "image/webp";
+      const base64Data = base64Match[2];
+
+      const response = await anthropic.messages.create({
+        model: "claude-sonnet-4-6",
+        max_tokens: 16000,
         messages: [
           {
             role: "user",
             content: [
-              { type: "text", text: prompt },
               {
-                type: "image_url",
-                image_url: { url: imageData, detail: "high" },
+                type: "image",
+                source: {
+                  type: "base64",
+                  media_type: mediaType,
+                  data: base64Data,
+                },
               },
+              { type: "text", text: prompt },
             ],
           },
         ],
-        max_tokens: 16000,
-        temperature: 0.2,
       });
 
-      const content = response.choices[0]?.message?.content || "";
-      console.log("AI detect response length:", content.length, "chars. First 200:", content.substring(0, 200));
+      const content = response.content[0]?.type === "text" ? response.content[0].text : "";
+      console.log("Claude detect response length:", content.length, "chars. First 300:", content.substring(0, 300));
 
       let jsonStr = content.trim();
       const codeBlockMatch = jsonStr.match(/```(?:json)?\s*([\s\S]*?)```/);

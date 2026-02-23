@@ -492,7 +492,7 @@ export default function SiteLayoutEditor() {
               onClick={() => aiDetectMutation.mutate()}
               disabled={aiDetectMutation.isPending}
               data-testid="button-ai-detect"
-              title="Experimental: Uses AI vision to detect container positions in the uploaded image. Best for small sites. For Wolf Hollow, use the template button instead."
+              title="Uses Claude AI vision to read container labels from the uploaded image and estimate positions. Results may vary depending on image quality and label visibility."
             >
               {aiDetectMutation.isPending ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Sparkles className="h-4 w-4 mr-2" />}
               {aiDetectMutation.isPending ? (aiDetectProgress || "Analyzing...") : "AI Detect (Beta)"}

@@ -474,6 +474,17 @@ export async function registerRoutes(
     }
   });
 
+  app.post("/api/containers/bulk-create", async (req, res) => {
+    try {
+      const { names } = z.object({ names: z.array(z.string()) }).parse(req.body);
+      const result = await storage.bulkCreateContainers(names);
+      res.json({ containers: result.containers, created: result.created });
+    } catch (err: any) {
+      if (err instanceof ZodError) return res.status(400).json({ message: handleZodError(err) });
+      res.status(500).json({ message: err.message });
+    }
+  });
+
   app.get("/api/mac-mappings", async (_req, res) => {
     try {
       const mappings = await storage.getMacLocationMappings();

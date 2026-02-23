@@ -59,6 +59,7 @@ export interface IStorage {
   getContainers(): Promise<Container[]>;
   getContainer(id: string): Promise<Container | undefined>;
   createContainer(container: InsertContainer): Promise<Container>;
+  bulkCreateContainers(names: string[]): Promise<{ created: number; containers: Container[] }>;
   updateContainer(id: string, data: Partial<InsertContainer>): Promise<Container | undefined>;
   deleteContainer(id: string): Promise<void>;
   getContainersWithSlots(): Promise<ContainerWithSlots[]>;
@@ -351,6 +352,26 @@ export class DatabaseStorage implements IStorage {
   async createContainer(container: InsertContainer): Promise<Container> {
     const [created] = await db.insert(containers).values(container).returning();
     return created;
+  }
+
+  async bulkCreateContainers(names: string[]): Promise<{ created: number; containers: Container[] }> {
+    if (names.length === 0) return { created: 0, containers: [] };
+    const existing = await this.getContainers();
+    const existingNames = new Set(existing.map((c) => c.name));
+    const newNames = names.filter((n) => !existingNames.has(n));
+    if (newNames.length > 0) {
+      const BATCH = 500;
+      for (let i = 0; i < newNames.length; i += BATCH) {
+        const batch = newNames.slice(i, i + BATCH);
+        await db.insert(containers).values(
+          batch.map((name) => ({ name, rackCount: 14, slotsPerRack: 40 }))
+        );
+      }
+    }
+    const all = await this.getContainers();
+    const requestedSet = new Set(names);
+    const filtered = all.filter((c) => requestedSet.has(c.name));
+    return { created: newNames.length, containers: filtered };
   }
 
   async updateContainer(id: string, data: Partial<InsertContainer>): Promise<Container | undefined> {

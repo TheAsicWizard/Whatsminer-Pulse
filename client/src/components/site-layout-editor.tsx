@@ -22,7 +22,7 @@ import {
   Wand2,
 } from "lucide-react";
 import type { Container, SiteSettings } from "@shared/schema";
-import { getWolfHollowTemplate, wolfHollowMapUrl } from "@/lib/wolf-hollow-template";
+import { getWolfHollowTemplate, getWolfHollowContainerNames, wolfHollowMapUrl } from "@/lib/wolf-hollow-template";
 
 type ContainerLayout = {
   id: string;
@@ -153,11 +153,16 @@ export default function SiteLayoutEditor() {
       const uploadRes = await fetch("/api/site-settings/background", { method: "POST", body: formData });
       if (!uploadRes.ok) throw new Error("Background upload failed");
 
+      const templateNames = getWolfHollowContainerNames();
+      const bulkRes = await apiRequest("POST", "/api/containers/bulk-create", { names: templateNames });
+      const bulkData = await bulkRes.json();
+      const allContainers: Container[] = bulkData.containers;
+
       const template = getWolfHollowTemplate();
       const layoutArray: Array<{ id: string; layoutX: number | null; layoutY: number | null; layoutRotation: number | null }> = [];
       const newLayouts = new Map<string, { x: number; y: number; rotation: number }>();
 
-      for (const c of containers) {
+      for (const c of allContainers) {
         const pos = template.get(c.name);
         if (pos) {
           layoutArray.push({ id: c.id, layoutX: pos.x, layoutY: pos.y, layoutRotation: pos.rotation });
@@ -168,9 +173,9 @@ export default function SiteLayoutEditor() {
       }
 
       await apiRequest("POST", "/api/containers/layouts", { layouts: layoutArray });
-      return newLayouts;
+      return { newLayouts, totalPlaced: newLayouts.size };
     },
-    onSuccess: (newLayouts) => {
+    onSuccess: ({ newLayouts, totalPlaced }) => {
       setLayouts(newLayouts);
       setIsDirty(false);
       setInitialized(true);
@@ -178,7 +183,7 @@ export default function SiteLayoutEditor() {
       queryClient.invalidateQueries({ queryKey: ["/api/containers/list"] });
       queryClient.invalidateQueries({ queryKey: ["/api/containers/summary"] });
       queryClient.invalidateQueries({ queryKey: ["/api/site-settings"] });
-      toast({ title: "Layout applied", description: "Wolf Hollow site template has been applied with all 47 containers placed." });
+      toast({ title: "Layout applied", description: `Wolf Hollow site template applied — ${totalPlaced} containers placed.` });
     },
     onError: () => {
       toast({ title: "Auto-place failed", variant: "destructive" });

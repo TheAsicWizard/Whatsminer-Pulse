@@ -275,11 +275,6 @@ export async function scanIpRange(
   return allResults.filter((r) => r.found);
 }
 
-let pollDebugCount = 0;
-
-export function resetPollDebug() {
-  pollDebugCount = 0;
-}
 
 export async function pollRealMiner(ip: string, port: number): Promise<{
   hashrate: number;
@@ -303,38 +298,11 @@ export async function pollRealMiner(ip: string, port: number): Promise<{
   targetFreq: number;
   factoryGhs: number;
 } | null> {
-  const shouldDebug = pollDebugCount < 3;
-
   try {
     const [summaryRes, statsRes] = await Promise.all([
       queryCgminerApi(ip, port, "summary"),
-      queryCgminerApi(ip, port, "stats").catch((e) => {
-        if (shouldDebug) log(`[poller-debug] Stats query failed for ${ip}: ${e.message}`, "poller-debug");
-        return null;
-      }),
+      queryCgminerApi(ip, port, "stats").catch(() => null),
     ]);
-
-    if (shouldDebug) {
-      pollDebugCount++;
-      log(`[poller-debug] === RAW RESPONSE FOR ${ip} ===`, "poller-debug");
-      log(`[poller-debug] Summary raw: ${JSON.stringify(summaryRes).substring(0, 500)}`, "poller-debug");
-      log(`[poller-debug] Stats raw: ${JSON.stringify(statsRes).substring(0, 500)}`, "poller-debug");
-      if (summaryRes) {
-        log(`[poller-debug] Summary top-level keys: ${Object.keys(summaryRes).join(", ")}`, "poller-debug");
-      }
-      if (summaryRes?.SUMMARY?.[0]) {
-        log(`[poller-debug] Summary[0] keys: ${Object.keys(summaryRes.SUMMARY[0]).join(", ")}`, "poller-debug");
-        log(`[poller-debug] Summary[0] values: ${JSON.stringify(summaryRes.SUMMARY[0]).substring(0, 500)}`, "poller-debug");
-      }
-      if (statsRes?.STATS) {
-        for (let i = 0; i < Math.min(statsRes.STATS.length, 3); i++) {
-          log(`[poller-debug] STATS[${i}] keys: ${Object.keys(statsRes.STATS[i]).join(", ")}`, "poller-debug");
-          log(`[poller-debug] STATS[${i}] values: ${JSON.stringify(statsRes.STATS[i]).substring(0, 500)}`, "poller-debug");
-        }
-      } else if (statsRes) {
-        log(`[poller-debug] Stats top-level keys: ${Object.keys(statsRes).join(", ")}`, "poller-debug");
-      }
-    }
 
     let s: any = null;
     if (summaryRes?.SUMMARY?.[0]) {
@@ -344,7 +312,6 @@ export async function pollRealMiner(ip: string, port: number): Promise<{
     }
 
     if (!s) {
-      if (shouldDebug) log(`[poller-debug] No summary data found for ${ip}`, "poller-debug");
       return null;
     }
 
@@ -417,7 +384,6 @@ export async function pollRealMiner(ip: string, port: number): Promise<{
       factoryGhs,
     };
   } catch (err: any) {
-    if (shouldDebug) log(`Poll failed for ${ip}: ${err.message}`, "poller-debug");
     return null;
   }
 }

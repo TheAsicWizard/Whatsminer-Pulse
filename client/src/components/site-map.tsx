@@ -122,9 +122,12 @@ function getContainerHealthColor(c: ContainerSummary): { bg: string; border: str
   return { bg: "#166534", border: "#16a34a", glow: "none", label: "healthy" };
 }
 
+const LAYOUT_WIDTH = 1400;
+const LAYOUT_HEIGHT = 1000;
+
 export function ContainerSummaryMap({ containers, onAssignSlot, onSwapSlot, onUnassignSlot }: ContainerSummaryMapProps) {
   const [selectedContainer, setSelectedContainer] = useState<ContainerSummary | null>(null);
-  const [zoom, setZoom] = useState(1);
+  const [zoom, setZoom] = useState<number | null>(null);
   const [pan, setPan] = useState({ x: 0, y: 0 });
   const [isPanning, setIsPanning] = useState(false);
   const [panStart, setPanStart] = useState({ x: 0, y: 0 });
@@ -139,12 +142,43 @@ export function ContainerSummaryMap({ containers, onAssignSlot, onSwapSlot, onUn
   );
 
   useEffect(() => {
+    if (viewportRef.current && zoom === null) {
+      const rect = viewportRef.current.getBoundingClientRect();
+      if (rect.width > 0 && rect.height > 0) {
+        const fitZoom = Math.min(rect.width / LAYOUT_WIDTH, rect.height / LAYOUT_HEIGHT);
+        setZoom(Math.max(0.3, fitZoom));
+      } else {
+        setZoom(0.5);
+      }
+    }
+  }, [zoom]);
+
+  useEffect(() => {
+    const el = viewportRef.current;
+    if (!el) return;
+    const observer = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        const { width, height } = entry.contentRect;
+        if (width > 0 && height > 0) {
+          const fitZoom = Math.min(width / LAYOUT_WIDTH, height / LAYOUT_HEIGHT);
+          setZoom(Math.max(0.3, fitZoom));
+          setPan({ x: 0, y: 0 });
+        }
+      }
+    });
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
+
+  const currentZoom = zoom ?? 0.5;
+
+  useEffect(() => {
     const el = viewportRef.current;
     if (!el) return;
     const onWheel = (e: WheelEvent) => {
       e.preventDefault();
       const delta = e.deltaY > 0 ? -0.1 : 0.1;
-      setZoom((z) => Math.min(3, Math.max(0.5, z + delta)));
+      setZoom((z) => Math.min(3, Math.max(0.3, (z ?? 0.5) + delta)));
     };
     el.addEventListener("wheel", onWheel, { passive: false });
     return () => el.removeEventListener("wheel", onWheel);
@@ -168,7 +202,13 @@ export function ContainerSummaryMap({ containers, onAssignSlot, onSwapSlot, onUn
   }, []);
 
   const resetView = useCallback(() => {
-    setZoom(1);
+    if (viewportRef.current) {
+      const rect = viewportRef.current.getBoundingClientRect();
+      const fitZoom = Math.min(rect.width / LAYOUT_WIDTH, rect.height / LAYOUT_HEIGHT);
+      setZoom(fitZoom);
+    } else {
+      setZoom(0.5);
+    }
     setPan({ x: 0, y: 0 });
   }, []);
 
@@ -241,14 +281,14 @@ export function ContainerSummaryMap({ containers, onAssignSlot, onSwapSlot, onUn
         </div>
         <div className="flex items-center gap-1">
           <button
-            onClick={() => setZoom((z) => Math.min(3, z + 0.2))}
+            onClick={() => setZoom((z) => Math.min(3, (z ?? 0.5) + 0.2))}
             className="p-1.5 rounded hover:bg-muted transition-colors text-muted-foreground hover:text-foreground"
             data-testid="button-zoom-in"
           >
             <ZoomIn className="w-4 h-4" />
           </button>
           <button
-            onClick={() => setZoom((z) => Math.max(0.5, z - 0.2))}
+            onClick={() => setZoom((z) => Math.max(0.3, (z ?? 0.5) - 0.2))}
             className="p-1.5 rounded hover:bg-muted transition-colors text-muted-foreground hover:text-foreground"
             data-testid="button-zoom-out"
           >
@@ -261,7 +301,7 @@ export function ContainerSummaryMap({ containers, onAssignSlot, onSwapSlot, onUn
           >
             <Maximize2 className="w-4 h-4" />
           </button>
-          <span className="text-[10px] text-muted-foreground font-mono ml-1 w-8 text-center">{Math.round(zoom * 100)}%</span>
+          <span className="text-[10px] text-muted-foreground font-mono ml-1 w-8 text-center">{Math.round(currentZoom * 100)}%</span>
         </div>
       </div>
 
@@ -285,7 +325,7 @@ export function ContainerSummaryMap({ containers, onAssignSlot, onSwapSlot, onUn
             backgroundImage: `
               radial-gradient(circle at 1px 1px, hsl(220, 10%, 18%) 1px, transparent 0)
             `,
-            backgroundSize: `${20 * zoom}px ${20 * zoom}px`,
+            backgroundSize: `${20 * currentZoom}px ${20 * currentZoom}px`,
             backgroundPosition: `${pan.x}px ${pan.y}px`,
             opacity: 0.4,
           }}
@@ -293,9 +333,11 @@ export function ContainerSummaryMap({ containers, onAssignSlot, onSwapSlot, onUn
 
         {useCustomLayout ? (
           <div
-            className="absolute inset-0"
+            className="absolute"
             style={{
-              transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
+              width: "1400px",
+              height: "1000px",
+              transform: `translate(${pan.x}px, ${pan.y}px) scale(${currentZoom})`,
               transformOrigin: "0 0",
             }}
           >
@@ -326,7 +368,7 @@ export function ContainerSummaryMap({ containers, onAssignSlot, onSwapSlot, onUn
           <div
             className="absolute"
             style={{
-              transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
+              transform: `translate(${pan.x}px, ${pan.y}px) scale(${currentZoom})`,
               transformOrigin: "0 0",
               padding: "24px",
             }}

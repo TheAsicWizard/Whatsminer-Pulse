@@ -64,23 +64,39 @@ const allPositions: [string, TemplatePosition][] = [
   ...generateRowPositions(148, 167, 38, 45, 90),
   ...generateRowPositions(168, 187, 45, 45, 90),
 
-  ["C188", { x: 92, y: 48, rotation: 90 }],
+  ["C188", { x: 92, y: 48, rotation: 0 }],
 
   ...generateRowPositions(189, 207, 52, 47, 88),
 
-  ["C208", { x: 91, y: 55, rotation: 90 }],
-  ["C209", { x: 93.5, y: 55, rotation: 90 }],
-  ["C210", { x: 96, y: 55, rotation: 90 }],
+  ["C208", { x: 91, y: 55, rotation: 0 }],
+  ["C209", { x: 93.5, y: 55, rotation: 0 }],
+  ["C210", { x: 96, y: 55, rotation: 0 }],
 
   ...generateRowPositions(211, 224, 60, 53, 84),
 
-  ["C225", { x: 86, y: 62, rotation: 90 }],
-  ["C226", { x: 88.5, y: 62, rotation: 90 }],
+  ["C225", { x: 86, y: 62, rotation: 0 }],
+  ["C226", { x: 88.5, y: 62, rotation: 0 }],
 
   ...generateRowPositions(227, 242, 68, 53, 86),
   ...generateRowPositions(243, 252, 75, 56, 82, 0, [246]),
   ...generateRowPositions(253, 262, 82, 56, 82),
   ...generateRowPositions(263, 270, 89, 58, 80),
+
+  ["C271", { x: 58, y: 93, rotation: 0 }],
+  ["C272", { x: 61, y: 93, rotation: 0 }],
+  ["C273", { x: 65, y: 93, rotation: 0 }],
+  ["C274", { x: 68, y: 93, rotation: 0 }],
+  ["C275", { x: 72, y: 93, rotation: 0 }],
+  ["C276", { x: 75, y: 93, rotation: 0 }],
+  ["C277", { x: 79, y: 93, rotation: 0 }],
+  ["C278", { x: 82, y: 93, rotation: 0 }],
+
+  ["C279", { x: 58, y: 97, rotation: 0 }],
+  ["C280", { x: 61, y: 97, rotation: 0 }],
+  ["C281", { x: 65, y: 97, rotation: 0 }],
+  ["C282", { x: 68, y: 97, rotation: 0 }],
+  ["C283", { x: 72, y: 97, rotation: 0 }],
+  ["C284", { x: 75, y: 97, rotation: 0 }],
 ];
 
 const WOLF_HOLLOW_POSITIONS: Record<string, TemplatePosition> = Object.fromEntries(allPositions);

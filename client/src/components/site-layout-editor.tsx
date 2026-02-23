@@ -20,6 +20,10 @@ import {
   Loader2,
   Undo2,
   Wand2,
+  SkipForward,
+  Mouse,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react";
 import type { Container, SiteSettings } from "@shared/schema";
 import { getWolfHollowTemplate, getWolfHollowContainerNames, wolfHollowMapUrl } from "@/lib/wolf-hollow-template";
@@ -41,6 +45,11 @@ export default function SiteLayoutEditor() {
   const [layouts, setLayouts] = useState<Map<string, { x: number; y: number; rotation: number }>>(new Map());
   const [isDirty, setIsDirty] = useState(false);
   const [placingContainerId, setPlacingContainerId] = useState<string | null>(null);
+  const [batchMode, setBatchMode] = useState(false);
+  const [batchQueue, setBatchQueue] = useState<Container[]>([]);
+  const [batchIndex, setBatchIndex] = useState(0);
+  const [batchRotation, setBatchRotation] = useState(0);
+  const [batchHistory, setBatchHistory] = useState<Array<{ containerId: string; x: number; y: number; rotation: number }>>([]);
 
   const { data: containersRaw } = useQuery<Container[]>({
     queryKey: ["/api/containers/list"],
@@ -105,7 +114,7 @@ export default function SiteLayoutEditor() {
       queryClient.invalidateQueries({ queryKey: ["/api/containers/summary"] });
       queryClient.invalidateQueries({ queryKey: ["/api/site-settings"] });
       setIsDirty(false);
-      toast({ title: "Layout saved", description: "Container positions have been saved." });
+      toast({ title: "Layout saved", description: `${layouts.size} container positions saved.` });
     },
     onError: () => {
       toast({ title: "Save failed", variant: "destructive" });
@@ -197,23 +206,95 @@ export default function SiteLayoutEditor() {
 
   const handleCanvasClick = useCallback(
     (e: React.MouseEvent<HTMLDivElement>) => {
-      if (!placingContainerId || !canvasRef.current) return;
+      if (!canvasRef.current) return;
       const rect = canvasRef.current.getBoundingClientRect();
       const x = ((e.clientX - rect.left) / rect.width) * 100;
       const y = ((e.clientY - rect.top) / rect.height) * 100;
 
-      setLayouts((prev) => {
-        const next = new Map(prev);
-        const existing = next.get(placingContainerId);
-        next.set(placingContainerId, { x, y, rotation: existing?.rotation ?? 0 });
-        return next;
-      });
-      setSelectedContainerId(placingContainerId);
-      setPlacingContainerId(null);
-      setIsDirty(true);
+      if (batchMode && batchIndex < batchQueue.length) {
+        const container = batchQueue[batchIndex];
+        setLayouts((prev) => {
+          const next = new Map(prev);
+          next.set(container.id, { x, y, rotation: batchRotation });
+          return next;
+        });
+        setBatchHistory((prev) => [...prev, { containerId: container.id, x, y, rotation: batchRotation }]);
+        setBatchIndex((prev) => prev + 1);
+        setIsDirty(true);
+        return;
+      }
+
+      if (placingContainerId) {
+        setLayouts((prev) => {
+          const next = new Map(prev);
+          const existing = next.get(placingContainerId);
+          next.set(placingContainerId, { x, y, rotation: existing?.rotation ?? 0 });
+          return next;
+        });
+        setSelectedContainerId(placingContainerId);
+        setPlacingContainerId(null);
+        setIsDirty(true);
+      }
     },
-    [placingContainerId]
+    [placingContainerId, batchMode, batchIndex, batchQueue, batchRotation]
   );
+
+  const handleBatchUndo = () => {
+    if (batchHistory.length === 0) return;
+    const last = batchHistory[batchHistory.length - 1];
+    setLayouts((prev) => {
+      const next = new Map(prev);
+      next.delete(last.containerId);
+      return next;
+    });
+    setBatchHistory((prev) => prev.slice(0, -1));
+    setBatchIndex((prev) => Math.max(0, prev - 1));
+  };
+
+  const handleBatchSkip = () => {
+    if (batchIndex < batchQueue.length) {
+      setBatchIndex((prev) => prev + 1);
+    }
+  };
+
+  const startBatchMode = () => {
+    const sorted = [...containers].sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
+    const unplaced = sorted.filter((c) => !layouts.has(c.id));
+    if (unplaced.length === 0) {
+      toast({ title: "All containers already placed", description: "Clear the layout first to re-place containers." });
+      return;
+    }
+    setBatchQueue(unplaced);
+    setBatchIndex(0);
+    setBatchHistory([]);
+    setBatchRotation(0);
+    setBatchMode(true);
+    setPlacingContainerId(null);
+    setSelectedContainerId(null);
+  };
+
+  const startBatchModeAll = () => {
+    const sorted = [...containers].sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
+    setLayouts(new Map());
+    setBatchQueue(sorted);
+    setBatchIndex(0);
+    setBatchHistory([]);
+    setBatchRotation(0);
+    setBatchMode(true);
+    setPlacingContainerId(null);
+    setSelectedContainerId(null);
+    setIsDirty(true);
+  };
+
+  const finishBatchMode = () => {
+    setBatchMode(false);
+    setBatchQueue([]);
+    setBatchIndex(0);
+    setBatchHistory([]);
+    if (layouts.size > 0) {
+      toast({ title: "Batch placement done", description: `${layouts.size} containers positioned. Don't forget to save!` });
+    }
+  };
 
   const handleRemoveFromLayout = (containerId: string) => {
     setLayouts((prev) => {
@@ -246,6 +327,8 @@ export default function SiteLayoutEditor() {
   const selectedLayout = selectedContainerId ? layouts.get(selectedContainerId) : null;
   const selectedContainer = selectedContainerId ? containers.find((c) => c.id === selectedContainerId) : null;
 
+  const currentBatchContainer = batchMode && batchIndex < batchQueue.length ? batchQueue[batchIndex] : null;
+
   return (
     <Card>
       <CardHeader>
@@ -254,8 +337,7 @@ export default function SiteLayoutEditor() {
           Site Layout Editor
         </CardTitle>
         <CardDescription>
-          Upload your site photo and click to place each container where it belongs.
-          The dashboard site map will then show your real site layout with live data.
+          Upload your site photo and place containers where they belong. Use "Batch Place" to click-and-place containers one by one in order.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -288,7 +370,29 @@ export default function SiteLayoutEditor() {
             {autoPlaceMutation.isPending ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Wand2 className="h-4 w-4 mr-2" />}
             Auto-place (Wolf Hollow)
           </Button>
-          {backgroundImage && (
+          {!batchMode && backgroundImage && (
+            <Button
+              variant="default"
+              size="sm"
+              onClick={startBatchMode}
+              data-testid="button-batch-place"
+            >
+              <Mouse className="h-4 w-4 mr-2" />
+              Batch Place (Unplaced)
+            </Button>
+          )}
+          {!batchMode && backgroundImage && containers.length > 0 && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={startBatchModeAll}
+              data-testid="button-batch-place-all"
+            >
+              <Mouse className="h-4 w-4 mr-2" />
+              Batch Place (All)
+            </Button>
+          )}
+          {backgroundImage && !batchMode && (
             <Button
               variant="outline"
               size="sm"
@@ -299,7 +403,7 @@ export default function SiteLayoutEditor() {
               Remove Background
             </Button>
           )}
-          {isDirty && (
+          {isDirty && !batchMode && (
             <Button
               size="sm"
               onClick={() => saveMutation.mutate()}
@@ -310,7 +414,7 @@ export default function SiteLayoutEditor() {
               Save Layout
             </Button>
           )}
-          {placedCount > 0 && (
+          {placedCount > 0 && !batchMode && (
             <Button
               variant="destructive"
               size="sm"
@@ -324,13 +428,92 @@ export default function SiteLayoutEditor() {
           )}
         </div>
 
+        {batchMode && (
+          <div className="bg-primary/10 border border-primary/30 rounded-lg p-3 space-y-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Mouse className="h-4 w-4 text-primary" />
+                <span className="text-sm font-semibold">Batch Placement Mode</span>
+                <Badge variant="secondary" data-testid="text-batch-progress">
+                  {batchIndex}/{batchQueue.length}
+                </Badge>
+              </div>
+              <div className="flex items-center gap-2">
+                <Button variant="outline" size="sm" onClick={handleBatchUndo} disabled={batchHistory.length === 0} data-testid="button-batch-undo">
+                  <Undo2 className="h-3 w-3 mr-1" /> Undo
+                </Button>
+                <Button variant="outline" size="sm" onClick={handleBatchSkip} disabled={!currentBatchContainer} data-testid="button-batch-skip">
+                  <SkipForward className="h-3 w-3 mr-1" /> Skip
+                </Button>
+                {isDirty && (
+                  <Button size="sm" onClick={() => saveMutation.mutate()} disabled={saveMutation.isPending} data-testid="button-batch-save">
+                    {saveMutation.isPending ? <Loader2 className="h-3 w-3 mr-1 animate-spin" /> : <Save className="h-3 w-3 mr-1" />}
+                    Save
+                  </Button>
+                )}
+                <Button variant="secondary" size="sm" onClick={finishBatchMode} data-testid="button-batch-finish">
+                  <Check className="h-3 w-3 mr-1" /> Done
+                </Button>
+              </div>
+            </div>
+
+            {currentBatchContainer ? (
+              <div className="flex items-center gap-4">
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-muted-foreground">Next:</span>
+                  <Badge variant="default" className="text-sm font-mono animate-pulse" data-testid="text-batch-current">
+                    {currentBatchContainer.name}
+                  </Badge>
+                  <span className="text-xs text-muted-foreground">Click on the image to place it</span>
+                </div>
+                <div className="flex items-center gap-2 ml-auto">
+                  <Label className="text-xs text-muted-foreground">Rotation: {batchRotation}°</Label>
+                  <Slider
+                    value={[batchRotation]}
+                    onValueChange={([v]) => setBatchRotation(v)}
+                    min={0}
+                    max={359}
+                    step={1}
+                    className="w-32"
+                    data-testid="slider-batch-rotation"
+                  />
+                  <div className="flex gap-0.5">
+                    {[0, 90, 180, 270, 325].map((deg) => (
+                      <button
+                        key={deg}
+                        className={`text-[9px] px-1.5 py-0.5 rounded transition-colors ${batchRotation === deg ? "bg-primary text-primary-foreground" : "bg-muted hover:bg-muted-foreground/20 text-muted-foreground"}`}
+                        onClick={() => setBatchRotation(deg)}
+                        data-testid={`button-batch-rotation-${deg}`}
+                      >
+                        {deg}°
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="text-sm text-muted-foreground flex items-center gap-2">
+                <Check className="h-4 w-4 text-green-500" />
+                All containers in queue have been placed! Click "Save" to keep the positions, or "Done" to exit.
+              </div>
+            )}
+
+            <div className="w-full bg-muted rounded-full h-1.5">
+              <div
+                className="bg-primary h-1.5 rounded-full transition-all duration-300"
+                style={{ width: `${batchQueue.length > 0 ? (batchIndex / batchQueue.length) * 100 : 0}%` }}
+              />
+            </div>
+          </div>
+        )}
+
         <div className="flex gap-4">
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 mb-2">
               <Badge variant="secondary" data-testid="text-placed-count">
                 {placedCount}/{totalCount} placed
               </Badge>
-              {placingContainerId && (
+              {placingContainerId && !batchMode && (
                 <Badge variant="default" className="animate-pulse" data-testid="text-placing-indicator">
                   Click on the image to place {containers.find((c) => c.id === placingContainerId)?.name}
                 </Badge>
@@ -342,7 +525,7 @@ export default function SiteLayoutEditor() {
               className="relative border border-border rounded-lg overflow-hidden"
               style={{
                 height: "500px",
-                cursor: placingContainerId ? "crosshair" : "default",
+                cursor: (placingContainerId || (batchMode && currentBatchContainer)) ? "crosshair" : "default",
                 background: backgroundImage
                   ? `url(${backgroundImage}) center/contain no-repeat`
                   : "linear-gradient(135deg, hsl(220, 15%, 8%) 0%, hsl(220, 12%, 11%) 50%, hsl(220, 15%, 8%) 100%)",
@@ -377,17 +560,19 @@ export default function SiteLayoutEditor() {
                   >
                     <div
                       className={`
-                        px-2 py-1 rounded text-[10px] font-bold cursor-pointer whitespace-nowrap
+                        px-1.5 py-0.5 rounded text-[8px] font-bold cursor-pointer whitespace-nowrap
                         transition-all
                         ${isSelected
-                          ? "bg-primary text-primary-foreground ring-2 ring-primary ring-offset-2 ring-offset-background"
+                          ? "bg-primary text-primary-foreground ring-2 ring-primary ring-offset-1 ring-offset-background"
                           : "bg-amber-600/90 text-white hover:bg-amber-500/90"
                         }
                       `}
                       onClick={(e) => {
                         e.stopPropagation();
-                        setSelectedContainerId(id);
-                        setPlacingContainerId(null);
+                        if (!batchMode) {
+                          setSelectedContainerId(id);
+                          setPlacingContainerId(null);
+                        }
                       }}
                       data-testid={`layout-container-${id}`}
                     >
@@ -399,130 +584,132 @@ export default function SiteLayoutEditor() {
             </div>
           </div>
 
-          <div className="w-64 flex-shrink-0 space-y-3">
-            {selectedContainer && selectedLayout && (
-              <Card className="border-primary">
-                <CardHeader className="py-3 px-3">
-                  <CardTitle className="text-sm">{selectedContainer.name}</CardTitle>
-                </CardHeader>
-                <CardContent className="px-3 pb-3 space-y-3">
-                  <div>
-                    <Label className="text-xs text-muted-foreground">Rotation ({Math.round(selectedLayout.rotation)}°)</Label>
-                    <Slider
-                      value={[selectedLayout.rotation]}
-                      onValueChange={([v]) => handleRotationChange(selectedContainer.id, v)}
-                      min={0}
-                      max={359}
-                      step={1}
-                      className="mt-1"
-                      data-testid={`slider-rotation-${selectedContainer.id}`}
-                    />
-                    <div className="flex gap-1 mt-1">
-                      {[0, 45, 90, 135, 180, 225, 270, 315].map((deg) => (
-                        <button
-                          key={deg}
-                          className="text-[9px] px-1 py-0.5 rounded bg-muted hover:bg-muted-foreground/20 text-muted-foreground"
-                          onClick={() => handleRotationChange(selectedContainer.id, deg)}
-                        >
-                          {deg}°
-                        </button>
-                      ))}
+          {!batchMode && (
+            <div className="w-64 flex-shrink-0 space-y-3">
+              {selectedContainer && selectedLayout && (
+                <Card className="border-primary">
+                  <CardHeader className="py-3 px-3">
+                    <CardTitle className="text-sm">{selectedContainer.name}</CardTitle>
+                  </CardHeader>
+                  <CardContent className="px-3 pb-3 space-y-3">
+                    <div>
+                      <Label className="text-xs text-muted-foreground">Rotation ({Math.round(selectedLayout.rotation)}°)</Label>
+                      <Slider
+                        value={[selectedLayout.rotation]}
+                        onValueChange={([v]) => handleRotationChange(selectedContainer.id, v)}
+                        min={0}
+                        max={359}
+                        step={1}
+                        className="mt-1"
+                        data-testid={`slider-rotation-${selectedContainer.id}`}
+                      />
+                      <div className="flex gap-1 mt-1">
+                        {[0, 45, 90, 135, 180, 225, 270, 315].map((deg) => (
+                          <button
+                            key={deg}
+                            className="text-[9px] px-1 py-0.5 rounded bg-muted hover:bg-muted-foreground/20 text-muted-foreground"
+                            onClick={() => handleRotationChange(selectedContainer.id, deg)}
+                          >
+                            {deg}°
+                          </button>
+                        ))}
+                      </div>
                     </div>
-                  </div>
-                  <div className="flex gap-1">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="flex-1 text-xs"
-                      onClick={() => {
-                        setPlacingContainerId(selectedContainer.id);
-                        setSelectedContainerId(null);
-                      }}
-                      data-testid={`button-reposition-${selectedContainer.id}`}
-                    >
-                      <MapPin className="h-3 w-3 mr-1" />
-                      Reposition
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="text-xs text-red-400"
-                      onClick={() => handleRemoveFromLayout(selectedContainer.id)}
-                      data-testid={`button-remove-container-${selectedContainer.id}`}
-                    >
-                      <X className="h-3 w-3" />
-                    </Button>
-                  </div>
-                </CardContent>
-              </Card>
-            )}
+                    <div className="flex gap-1">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="flex-1 text-xs"
+                        onClick={() => {
+                          setPlacingContainerId(selectedContainer.id);
+                          setSelectedContainerId(null);
+                        }}
+                        data-testid={`button-reposition-${selectedContainer.id}`}
+                      >
+                        <MapPin className="h-3 w-3 mr-1" />
+                        Reposition
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="text-xs text-red-400"
+                        onClick={() => handleRemoveFromLayout(selectedContainer.id)}
+                        data-testid={`button-remove-container-${selectedContainer.id}`}
+                      >
+                        <X className="h-3 w-3" />
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
 
-            <div className="space-y-1">
-              <Label className="text-xs text-muted-foreground font-semibold">
-                Unplaced ({unplacedContainers.length})
-              </Label>
-              <div className="max-h-[250px] overflow-y-auto space-y-1">
-                {unplacedContainers.map((c) => (
-                  <button
-                    key={c.id}
-                    className={`
-                      w-full text-left px-2 py-1.5 rounded text-xs font-mono
-                      transition-all
-                      ${placingContainerId === c.id
-                        ? "bg-primary text-primary-foreground"
-                        : "bg-muted/50 hover:bg-muted text-foreground"
-                      }
-                    `}
-                    onClick={() => {
-                      setPlacingContainerId(placingContainerId === c.id ? null : c.id);
-                      setSelectedContainerId(null);
-                    }}
-                    data-testid={`button-place-${c.id}`}
-                  >
-                    <MapPin className="h-3 w-3 inline mr-1" />
-                    {c.name}
-                  </button>
-                ))}
-                {unplacedContainers.length === 0 && (
-                  <p className="text-xs text-muted-foreground flex items-center gap-1">
-                    <Check className="h-3 w-3" />
-                    All containers placed
-                  </p>
-                )}
-              </div>
-            </div>
-
-            {placedContainers.length > 0 && (
               <div className="space-y-1">
                 <Label className="text-xs text-muted-foreground font-semibold">
-                  Placed ({placedContainers.length})
+                  Unplaced ({unplacedContainers.length})
                 </Label>
-                <div className="max-h-[150px] overflow-y-auto space-y-1">
-                  {placedContainers.map((c) => (
+                <div className="max-h-[250px] overflow-y-auto space-y-1">
+                  {unplacedContainers.map((c) => (
                     <button
                       key={c.id}
                       className={`
                         w-full text-left px-2 py-1.5 rounded text-xs font-mono
                         transition-all
-                        ${selectedContainerId === c.id
-                          ? "bg-primary/20 text-primary border border-primary/30"
-                          : "bg-green-900/20 hover:bg-green-900/30 text-green-400"
+                        ${placingContainerId === c.id
+                          ? "bg-primary text-primary-foreground"
+                          : "bg-muted/50 hover:bg-muted text-foreground"
                         }
                       `}
                       onClick={() => {
-                        setSelectedContainerId(selectedContainerId === c.id ? null : c.id);
-                        setPlacingContainerId(null);
+                        setPlacingContainerId(placingContainerId === c.id ? null : c.id);
+                        setSelectedContainerId(null);
                       }}
-                      data-testid={`button-select-placed-${c.id}`}
+                      data-testid={`button-place-${c.id}`}
                     >
-                      <Check className="h-3 w-3 inline mr-1" />
+                      <MapPin className="h-3 w-3 inline mr-1" />
                       {c.name}
                     </button>
                   ))}
+                  {unplacedContainers.length === 0 && (
+                    <p className="text-xs text-muted-foreground flex items-center gap-1">
+                      <Check className="h-3 w-3" />
+                      All containers placed
+                    </p>
+                  )}
                 </div>
               </div>
-            )}
-          </div>
+
+              {placedContainers.length > 0 && (
+                <div className="space-y-1">
+                  <Label className="text-xs text-muted-foreground font-semibold">
+                    Placed ({placedContainers.length})
+                  </Label>
+                  <div className="max-h-[150px] overflow-y-auto space-y-1">
+                    {placedContainers.map((c) => (
+                      <button
+                        key={c.id}
+                        className={`
+                          w-full text-left px-2 py-1.5 rounded text-xs font-mono
+                          transition-all
+                          ${selectedContainerId === c.id
+                            ? "bg-primary/20 text-primary border border-primary/30"
+                            : "bg-green-900/20 hover:bg-green-900/30 text-green-400"
+                          }
+                        `}
+                        onClick={() => {
+                          setSelectedContainerId(selectedContainerId === c.id ? null : c.id);
+                          setPlacingContainerId(null);
+                        }}
+                        data-testid={`button-select-placed-${c.id}`}
+                      >
+                        <Check className="h-3 w-3 inline mr-1" />
+                        {c.name}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
         </div>
       </CardContent>
     </Card>

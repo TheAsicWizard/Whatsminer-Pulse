@@ -472,19 +472,26 @@ export default function SiteLayoutEditor() {
                     draggable={false}
                   />
                 )}
-
+              </div>
+              <div className="absolute inset-0 pointer-events-none" style={{ zIndex: 10 }}>
                 {Array.from(layouts.entries()).map(([id, pos]) => {
                   const container = containers.find((c) => c.id === id);
                   if (!container) return null;
                   if (pos.x < 0 || pos.y < 0) return null;
                   const isSelected = selectedContainerId === id;
+                  const canvasEl = canvasRef.current;
+                  if (!canvasEl) return null;
+                  const canvasW = canvasEl.clientWidth;
+                  const canvasH = canvasEl.clientHeight;
+                  const pixelX = editorPan.x + (pos.x / 100) * canvasW * editorZoom;
+                  const pixelY = editorPan.y + (pos.y / 100) * canvasH * editorZoom;
                   return (
                     <div
                       key={id}
-                      className="absolute"
+                      className="absolute pointer-events-auto"
                       style={{
-                        left: `${pos.x}%`,
-                        top: `${pos.y}%`,
+                        left: `${pixelX}px`,
+                        top: `${pixelY}px`,
                         transform: `translate(-50%, -50%) rotate(${pos.rotation}deg)`,
                         zIndex: isSelected ? 20 : 10,
                       }}
@@ -498,7 +505,6 @@ export default function SiteLayoutEditor() {
                             : "bg-amber-600/90 text-white hover:bg-amber-500/90"
                           }
                         `}
-                        style={{ transform: `scale(${1 / editorZoom})` }}
                         onClick={(e) => {
                           e.stopPropagation();
                           setSelectedContainerId(id);

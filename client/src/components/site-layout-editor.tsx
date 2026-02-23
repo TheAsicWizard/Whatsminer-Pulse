@@ -19,8 +19,10 @@ import {
   Image,
   Loader2,
   Undo2,
+  Wand2,
 } from "lucide-react";
 import type { Container, SiteSettings } from "@shared/schema";
+import { getWolfHollowTemplate, wolfHollowMapUrl } from "@/lib/wolf-hollow-template";
 
 type ContainerLayout = {
   id: string;
@@ -134,12 +136,52 @@ export default function SiteLayoutEditor() {
     onSuccess: () => {
       setLayouts(new Map());
       setIsDirty(false);
-      setInitialized(false);
       queryClient.invalidateQueries({ queryKey: ["/api/containers"] });
       queryClient.invalidateQueries({ queryKey: ["/api/containers/list"] });
       queryClient.invalidateQueries({ queryKey: ["/api/containers/summary"] });
       queryClient.invalidateQueries({ queryKey: ["/api/site-settings"] });
       toast({ title: "Layout cleared", description: "All container positions have been reset." });
+    },
+  });
+
+  const autoPlaceMutation = useMutation({
+    mutationFn: async () => {
+      const response = await fetch(wolfHollowMapUrl);
+      const blob = await response.blob();
+      const formData = new FormData();
+      formData.append("image", new File([blob], "wolf-hollow-site-map.png", { type: "image/png" }));
+      const uploadRes = await fetch("/api/site-settings/background", { method: "POST", body: formData });
+      if (!uploadRes.ok) throw new Error("Background upload failed");
+
+      const template = getWolfHollowTemplate();
+      const layoutArray: Array<{ id: string; layoutX: number | null; layoutY: number | null; layoutRotation: number | null }> = [];
+      const newLayouts = new Map<string, { x: number; y: number; rotation: number }>();
+
+      for (const c of containers) {
+        const pos = template.get(c.name);
+        if (pos) {
+          layoutArray.push({ id: c.id, layoutX: pos.x, layoutY: pos.y, layoutRotation: pos.rotation });
+          newLayouts.set(c.id, pos);
+        } else {
+          layoutArray.push({ id: c.id, layoutX: null, layoutY: null, layoutRotation: null });
+        }
+      }
+
+      await apiRequest("POST", "/api/containers/layouts", { layouts: layoutArray });
+      return newLayouts;
+    },
+    onSuccess: (newLayouts) => {
+      setLayouts(newLayouts);
+      setIsDirty(false);
+      setInitialized(true);
+      queryClient.invalidateQueries({ queryKey: ["/api/containers"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/containers/list"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/containers/summary"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/site-settings"] });
+      toast({ title: "Layout applied", description: "Wolf Hollow site template has been applied with all 47 containers placed." });
+    },
+    onError: () => {
+      toast({ title: "Auto-place failed", variant: "destructive" });
     },
   });
 
@@ -231,6 +273,16 @@ export default function SiteLayoutEditor() {
             onChange={handleFileUpload}
             data-testid="input-background-file"
           />
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => autoPlaceMutation.mutate()}
+            disabled={autoPlaceMutation.isPending}
+            data-testid="button-auto-place"
+          >
+            {autoPlaceMutation.isPending ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Wand2 className="h-4 w-4 mr-2" />}
+            Auto-place (Wolf Hollow)
+          </Button>
           {backgroundImage && (
             <Button
               variant="outline"

@@ -24,6 +24,9 @@ import {
   Mouse,
   ChevronLeft,
   ChevronRight,
+  ZoomIn,
+  ZoomOut,
+  Maximize2,
 } from "lucide-react";
 import type { Container, SiteSettings } from "@shared/schema";
 import { getWolfHollowTemplate, getWolfHollowContainerNames, wolfHollowMapUrl } from "@/lib/wolf-hollow-template";
@@ -36,9 +39,20 @@ type ContainerLayout = {
   layoutRotation: number | null;
 };
 
+function detectRotationForPosition(xPercent: number, yPercent: number): number {
+  if (xPercent < 45 && yPercent > 28) {
+    const diagonalBoundaryX = 10 + (yPercent - 30) * 0.85;
+    if (xPercent < diagonalBoundaryX + 12 && yPercent > 28 && yPercent < 80) {
+      return 325;
+    }
+  }
+  return 0;
+}
+
 export default function SiteLayoutEditor() {
   const { toast } = useToast();
   const canvasRef = useRef<HTMLDivElement>(null);
+  const imgContainerRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [selectedContainerId, setSelectedContainerId] = useState<string | null>(null);
@@ -49,7 +63,13 @@ export default function SiteLayoutEditor() {
   const [batchQueue, setBatchQueue] = useState<Container[]>([]);
   const [batchIndex, setBatchIndex] = useState(0);
   const [batchRotation, setBatchRotation] = useState(0);
+  const [batchAutoRotate, setBatchAutoRotate] = useState(true);
   const [batchHistory, setBatchHistory] = useState<Array<{ containerId: string; x: number; y: number; rotation: number }>>([]);
+
+  const [editorZoom, setEditorZoom] = useState(1);
+  const [editorPan, setEditorPan] = useState({ x: 0, y: 0 });
+  const [isPanning, setIsPanning] = useState(false);
+  const [panStart, setPanStart] = useState({ x: 0, y: 0 });
 
   const { data: containersRaw } = useQuery<Container[]>({
     queryKey: ["/api/containers/list"],
@@ -204,31 +224,88 @@ export default function SiteLayoutEditor() {
     if (file) uploadMutation.mutate(file);
   };
 
+  useEffect(() => {
+    const el = canvasRef.current;
+    if (!el) return;
+    const onWheel = (e: WheelEvent) => {
+      e.preventDefault();
+      const rect = el.getBoundingClientRect();
+      const mouseX = e.clientX - rect.left;
+      const mouseY = e.clientY - rect.top;
+      const oldZoom = editorZoom;
+      const delta = e.deltaY > 0 ? -0.15 : 0.15;
+      const newZoom = Math.min(8, Math.max(0.5, oldZoom + delta));
+      const scale = newZoom / oldZoom;
+      setEditorPan((prev) => ({
+        x: mouseX - (mouseX - prev.x) * scale,
+        y: mouseY - (mouseY - prev.y) * scale,
+      }));
+      setEditorZoom(newZoom);
+    };
+    el.addEventListener("wheel", onWheel, { passive: false });
+    return () => el.removeEventListener("wheel", onWheel);
+  }, [editorZoom]);
+
+  const handleEditorMouseDown = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+    if (e.button === 1 || (e.button === 0 && e.altKey)) {
+      e.preventDefault();
+      setIsPanning(true);
+      setPanStart({ x: e.clientX - editorPan.x, y: e.clientY - editorPan.y });
+    }
+  }, [editorPan]);
+
+  const handleEditorMouseMove = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+    if (isPanning) {
+      setEditorPan({ x: e.clientX - panStart.x, y: e.clientY - panStart.y });
+    }
+  }, [isPanning, panStart]);
+
+  const handleEditorMouseUp = useCallback(() => {
+    setIsPanning(false);
+  }, []);
+
+  const resetEditorView = useCallback(() => {
+    setEditorZoom(1);
+    setEditorPan({ x: 0, y: 0 });
+  }, []);
+
+  const screenToImagePercent = useCallback((clientX: number, clientY: number): { x: number; y: number } | null => {
+    if (!imgContainerRef.current) return null;
+    const rect = imgContainerRef.current.getBoundingClientRect();
+    const x = ((clientX - rect.left) / rect.width) * 100;
+    const y = ((clientY - rect.top) / rect.height) * 100;
+    return { x: Math.max(0, Math.min(100, x)), y: Math.max(0, Math.min(100, y)) };
+  }, []);
+
   const handleCanvasClick = useCallback(
     (e: React.MouseEvent<HTMLDivElement>) => {
-      if (!canvasRef.current) return;
-      const rect = canvasRef.current.getBoundingClientRect();
-      const x = ((e.clientX - rect.left) / rect.width) * 100;
-      const y = ((e.clientY - rect.top) / rect.height) * 100;
+      if (isPanning || e.altKey) return;
+      const pos = screenToImagePercent(e.clientX, e.clientY);
+      if (!pos) return;
+      const { x, y } = pos;
 
       if (batchMode && batchIndex < batchQueue.length) {
         const container = batchQueue[batchIndex];
+        const rotation = batchAutoRotate ? detectRotationForPosition(x, y) : batchRotation;
         setLayouts((prev) => {
           const next = new Map(prev);
-          next.set(container.id, { x, y, rotation: batchRotation });
+          next.set(container.id, { x, y, rotation });
           return next;
         });
-        setBatchHistory((prev) => [...prev, { containerId: container.id, x, y, rotation: batchRotation }]);
+        setBatchHistory((prev) => [...prev, { containerId: container.id, x, y, rotation }]);
         setBatchIndex((prev) => prev + 1);
+        if (batchAutoRotate) {
+          setBatchRotation(rotation);
+        }
         setIsDirty(true);
         return;
       }
 
       if (placingContainerId) {
+        const rotation = detectRotationForPosition(x, y);
         setLayouts((prev) => {
           const next = new Map(prev);
-          const existing = next.get(placingContainerId);
-          next.set(placingContainerId, { x, y, rotation: existing?.rotation ?? 0 });
+          next.set(placingContainerId, { x, y, rotation });
           return next;
         });
         setSelectedContainerId(placingContainerId);
@@ -236,7 +313,7 @@ export default function SiteLayoutEditor() {
         setIsDirty(true);
       }
     },
-    [placingContainerId, batchMode, batchIndex, batchQueue, batchRotation]
+    [placingContainerId, batchMode, batchIndex, batchQueue, batchRotation, batchAutoRotate, isPanning, screenToImagePercent]
   );
 
   const handleBatchUndo = () => {
@@ -268,6 +345,7 @@ export default function SiteLayoutEditor() {
     setBatchIndex(0);
     setBatchHistory([]);
     setBatchRotation(0);
+    setBatchAutoRotate(true);
     setBatchMode(true);
     setPlacingContainerId(null);
     setSelectedContainerId(null);
@@ -280,6 +358,7 @@ export default function SiteLayoutEditor() {
     setBatchIndex(0);
     setBatchHistory([]);
     setBatchRotation(0);
+    setBatchAutoRotate(true);
     setBatchMode(true);
     setPlacingContainerId(null);
     setSelectedContainerId(null);
@@ -458,37 +537,55 @@ export default function SiteLayoutEditor() {
             </div>
 
             {currentBatchContainer ? (
-              <div className="flex items-center gap-4">
-                <div className="flex items-center gap-2">
-                  <span className="text-xs text-muted-foreground">Next:</span>
-                  <Badge variant="default" className="text-sm font-mono animate-pulse" data-testid="text-batch-current">
-                    {currentBatchContainer.name}
-                  </Badge>
-                  <span className="text-xs text-muted-foreground">Click on the image to place it</span>
-                </div>
-                <div className="flex items-center gap-2 ml-auto">
-                  <Label className="text-xs text-muted-foreground">Rotation: {batchRotation}°</Label>
-                  <Slider
-                    value={[batchRotation]}
-                    onValueChange={([v]) => setBatchRotation(v)}
-                    min={0}
-                    max={359}
-                    step={1}
-                    className="w-32"
-                    data-testid="slider-batch-rotation"
-                  />
-                  <div className="flex gap-0.5">
-                    {[0, 90, 180, 270, 325].map((deg) => (
-                      <button
-                        key={deg}
-                        className={`text-[9px] px-1.5 py-0.5 rounded transition-colors ${batchRotation === deg ? "bg-primary text-primary-foreground" : "bg-muted hover:bg-muted-foreground/20 text-muted-foreground"}`}
-                        onClick={() => setBatchRotation(deg)}
-                        data-testid={`button-batch-rotation-${deg}`}
-                      >
-                        {deg}°
-                      </button>
-                    ))}
+              <div className="space-y-2">
+                <div className="flex items-center gap-4">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-muted-foreground">Next:</span>
+                    <Badge variant="default" className="text-sm font-mono animate-pulse" data-testid="text-batch-current">
+                      {currentBatchContainer.name}
+                    </Badge>
+                    <span className="text-xs text-muted-foreground">Click on the image to place it</span>
                   </div>
+                </div>
+                <div className="flex items-center gap-3">
+                  <button
+                    className={`text-[10px] px-2 py-1 rounded transition-colors flex items-center gap-1 ${batchAutoRotate ? "bg-green-600 text-white" : "bg-muted text-muted-foreground hover:bg-muted-foreground/20"}`}
+                    onClick={() => setBatchAutoRotate(!batchAutoRotate)}
+                    data-testid="button-batch-auto-rotate"
+                  >
+                    <RotateCw className="h-3 w-3" />
+                    Auto-angle {batchAutoRotate ? "ON" : "OFF"}
+                  </button>
+                  {batchAutoRotate ? (
+                    <span className="text-[10px] text-muted-foreground">
+                      Using: {batchRotation}° (auto-detected from click position)
+                    </span>
+                  ) : (
+                    <div className="flex items-center gap-2">
+                      <Label className="text-xs text-muted-foreground">Rotation: {batchRotation}°</Label>
+                      <Slider
+                        value={[batchRotation]}
+                        onValueChange={([v]) => setBatchRotation(v)}
+                        min={0}
+                        max={359}
+                        step={1}
+                        className="w-32"
+                        data-testid="slider-batch-rotation"
+                      />
+                      <div className="flex gap-0.5">
+                        {[0, 90, 180, 270, 325].map((deg) => (
+                          <button
+                            key={deg}
+                            className={`text-[9px] px-1.5 py-0.5 rounded transition-colors ${batchRotation === deg ? "bg-primary text-primary-foreground" : "bg-muted hover:bg-muted-foreground/20 text-muted-foreground"}`}
+                            onClick={() => setBatchRotation(deg)}
+                            data-testid={`button-batch-rotation-${deg}`}
+                          >
+                            {deg}°
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
             ) : (
@@ -520,17 +617,45 @@ export default function SiteLayoutEditor() {
               )}
             </div>
 
+            <div className="flex items-center gap-1 mb-1">
+              <button
+                onClick={() => setEditorZoom((z) => Math.min(8, z + 0.3))}
+                className="p-1.5 rounded hover:bg-muted transition-colors text-muted-foreground hover:text-foreground"
+                data-testid="button-editor-zoom-in"
+              >
+                <ZoomIn className="w-4 h-4" />
+              </button>
+              <button
+                onClick={() => setEditorZoom((z) => Math.max(0.5, z - 0.3))}
+                className="p-1.5 rounded hover:bg-muted transition-colors text-muted-foreground hover:text-foreground"
+                data-testid="button-editor-zoom-out"
+              >
+                <ZoomOut className="w-4 h-4" />
+              </button>
+              <button
+                onClick={resetEditorView}
+                className="p-1.5 rounded hover:bg-muted transition-colors text-muted-foreground hover:text-foreground"
+                data-testid="button-editor-reset-view"
+              >
+                <Maximize2 className="w-4 h-4" />
+              </button>
+              <span className="text-[10px] text-muted-foreground font-mono ml-1">{Math.round(editorZoom * 100)}%</span>
+              <span className="text-[10px] text-muted-foreground ml-2">Scroll to zoom · Alt+drag to pan</span>
+            </div>
+
             <div
               ref={canvasRef}
               className="relative border border-border rounded-lg overflow-hidden"
               style={{
-                height: "500px",
-                cursor: (placingContainerId || (batchMode && currentBatchContainer)) ? "crosshair" : "default",
-                background: backgroundImage
-                  ? `url(${backgroundImage}) center/contain no-repeat`
-                  : "linear-gradient(135deg, hsl(220, 15%, 8%) 0%, hsl(220, 12%, 11%) 50%, hsl(220, 15%, 8%) 100%)",
+                height: "600px",
+                cursor: isPanning ? "grabbing" : (placingContainerId || (batchMode && currentBatchContainer)) ? "crosshair" : "grab",
+                background: "linear-gradient(135deg, hsl(220, 15%, 8%) 0%, hsl(220, 12%, 11%) 50%, hsl(220, 15%, 8%) 100%)",
               }}
               onClick={handleCanvasClick}
+              onMouseDown={handleEditorMouseDown}
+              onMouseMove={handleEditorMouseMove}
+              onMouseUp={handleEditorMouseUp}
+              onMouseLeave={handleEditorMouseUp}
               data-testid="layout-editor-canvas"
             >
               {!backgroundImage && (
@@ -543,44 +668,65 @@ export default function SiteLayoutEditor() {
                 </div>
               )}
 
-              {Array.from(layouts.entries()).map(([id, pos]) => {
-                const container = containers.find((c) => c.id === id);
-                if (!container) return null;
-                const isSelected = selectedContainerId === id;
-                return (
-                  <div
-                    key={id}
-                    className="absolute"
-                    style={{
-                      left: `${pos.x}%`,
-                      top: `${pos.y}%`,
-                      transform: `translate(-50%, -50%) rotate(${pos.rotation}deg)`,
-                      zIndex: isSelected ? 20 : 10,
-                    }}
-                  >
+              <div
+                ref={imgContainerRef}
+                className="absolute"
+                style={{
+                  width: "100%",
+                  height: "100%",
+                  transform: `translate(${editorPan.x}px, ${editorPan.y}px) scale(${editorZoom})`,
+                  transformOrigin: "0 0",
+                }}
+              >
+                {backgroundImage && (
+                  <img
+                    src={backgroundImage}
+                    alt="Site plan"
+                    className="w-full h-full object-contain pointer-events-none"
+                    draggable={false}
+                  />
+                )}
+
+                {Array.from(layouts.entries()).map(([id, pos]) => {
+                  const container = containers.find((c) => c.id === id);
+                  if (!container) return null;
+                  const isSelected = selectedContainerId === id;
+                  return (
                     <div
-                      className={`
-                        px-1.5 py-0.5 rounded text-[8px] font-bold cursor-pointer whitespace-nowrap
-                        transition-all
-                        ${isSelected
-                          ? "bg-primary text-primary-foreground ring-2 ring-primary ring-offset-1 ring-offset-background"
-                          : "bg-amber-600/90 text-white hover:bg-amber-500/90"
-                        }
-                      `}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        if (!batchMode) {
-                          setSelectedContainerId(id);
-                          setPlacingContainerId(null);
-                        }
+                      key={id}
+                      className="absolute"
+                      style={{
+                        left: `${pos.x}%`,
+                        top: `${pos.y}%`,
+                        transform: `translate(-50%, -50%) rotate(${pos.rotation}deg)`,
+                        zIndex: isSelected ? 20 : 10,
                       }}
-                      data-testid={`layout-container-${id}`}
                     >
-                      {container.name}
+                      <div
+                        className={`
+                          px-1.5 py-0.5 rounded text-[8px] font-bold cursor-pointer whitespace-nowrap
+                          transition-all
+                          ${isSelected
+                            ? "bg-primary text-primary-foreground ring-2 ring-primary ring-offset-1 ring-offset-background"
+                            : "bg-amber-600/90 text-white hover:bg-amber-500/90"
+                          }
+                        `}
+                        style={{ transform: `scale(${1 / editorZoom})` }}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (!batchMode) {
+                            setSelectedContainerId(id);
+                            setPlacingContainerId(null);
+                          }
+                        }}
+                        data-testid={`layout-container-${id}`}
+                      >
+                        {container.name}
+                      </div>
                     </div>
-                  </div>
-                );
-              })}
+                  );
+                })}
+              </div>
             </div>
           </div>
 

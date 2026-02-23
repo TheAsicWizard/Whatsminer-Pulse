@@ -161,12 +161,22 @@ export function ContainerSummaryMap({ containers, onAssignSlot, onSwapSlot, onUn
     if (!el) return;
     const onWheel = (e: WheelEvent) => {
       e.preventDefault();
+      const rect = el.getBoundingClientRect();
+      const cursorX = e.clientX - rect.left;
+      const cursorY = e.clientY - rect.top;
+      const oldZoom = zoom ?? 0.5;
       const delta = e.deltaY > 0 ? -0.1 : 0.1;
-      setZoom((z) => Math.min(3, Math.max(0.3, (z ?? 0.5) + delta)));
+      const newZoom = Math.min(3, Math.max(0.3, oldZoom + delta));
+      const scale = newZoom / oldZoom;
+      setPan((p) => ({
+        x: cursorX - scale * (cursorX - p.x),
+        y: cursorY - scale * (cursorY - p.y),
+      }));
+      setZoom(newZoom);
     };
     el.addEventListener("wheel", onWheel, { passive: false });
     return () => el.removeEventListener("wheel", onWheel);
-  }, []);
+  }, [zoom]);
 
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
     if (e.button === 0) {

@@ -10,6 +10,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Box, Server, Cpu, Zap, Thermometer, Settings, ZoomIn, ZoomOut, Maximize2, ArrowLeft } from "lucide-react";
 import type { MinerWithLatest, ContainerWithSlots, Container, SiteSettings } from "@shared/schema";
 import { cn } from "@/lib/utils";
+import { wolfHollowMapUrl } from "@/lib/wolf-hollow-template";
 
 const statusColors: Record<string, { bg: string; border: string; text: string }> = {
   online: {
@@ -132,6 +133,7 @@ export function ContainerSummaryMap({ containers, onAssignSlot, onSwapSlot, onUn
   const [isPanning, setIsPanning] = useState(false);
   const [panStart, setPanStart] = useState({ x: 0, y: 0 });
   const viewportRef = useRef<HTMLDivElement>(null);
+  const initialZoomSet = useRef(false);
 
   const { data: siteSettings } = useQuery<SiteSettings>({
     queryKey: ["/api/site-settings"],
@@ -142,33 +144,15 @@ export function ContainerSummaryMap({ containers, onAssignSlot, onSwapSlot, onUn
   );
 
   useEffect(() => {
-    if (viewportRef.current && zoom === null) {
+    if (viewportRef.current && !initialZoomSet.current) {
       const rect = viewportRef.current.getBoundingClientRect();
       if (rect.width > 0 && rect.height > 0) {
         const fitZoom = Math.min(rect.width / LAYOUT_WIDTH, rect.height / LAYOUT_HEIGHT);
         setZoom(Math.max(0.3, fitZoom));
-      } else {
-        setZoom(0.5);
+        initialZoomSet.current = true;
       }
     }
-  }, [zoom]);
-
-  useEffect(() => {
-    const el = viewportRef.current;
-    if (!el) return;
-    const observer = new ResizeObserver((entries) => {
-      for (const entry of entries) {
-        const { width, height } = entry.contentRect;
-        if (width > 0 && height > 0) {
-          const fitZoom = Math.min(width / LAYOUT_WIDTH, height / LAYOUT_HEIGHT);
-          setZoom(Math.max(0.3, fitZoom));
-          setPan({ x: 0, y: 0 });
-        }
-      }
-    });
-    observer.observe(el);
-    return () => observer.disconnect();
-  }, []);
+  }, [containers]);
 
   const currentZoom = zoom ?? 0.5;
 
@@ -335,15 +319,25 @@ export function ContainerSummaryMap({ containers, onAssignSlot, onSwapSlot, onUn
           <div
             className="absolute"
             style={{
-              width: "1400px",
-              height: "1000px",
+              width: `${LAYOUT_WIDTH}px`,
+              height: `${LAYOUT_HEIGHT}px`,
               transform: `translate(${pan.x}px, ${pan.y}px) scale(${currentZoom})`,
               transformOrigin: "0 0",
             }}
           >
+            {siteSettings?.backgroundImage && (
+              <img
+                src={siteSettings.backgroundImage}
+                alt="Site map background"
+                className="absolute inset-0 w-full h-full object-cover"
+                style={{ opacity: 0.35 }}
+                draggable={false}
+              />
+            )}
             {containers.map((container) => {
               if (container.layoutX == null || container.layoutY == null) return null;
               const rotation = container.layoutRotation ?? 0;
+              const inverseScale = 1 / currentZoom;
               return (
                 <div
                   key={container.id}
@@ -351,7 +345,8 @@ export function ContainerSummaryMap({ containers, onAssignSlot, onSwapSlot, onUn
                   style={{
                     left: `${container.layoutX}%`,
                     top: `${container.layoutY}%`,
-                    transform: `translate(-50%, -50%) rotate(${rotation}deg)`,
+                    transform: `translate(-50%, -50%) rotate(${rotation}deg) scale(${inverseScale})`,
+                    transformOrigin: "center center",
                     zIndex: 10,
                   }}
                 >
@@ -430,10 +425,10 @@ function ContainerBlock({ container, onClick, compact }: { container: ContainerS
       <TooltipTrigger asChild>
         <button
           onClick={(e) => { e.stopPropagation(); onClick(); }}
-          className="group relative flex flex-col items-center transition-all duration-200 hover:scale-105"
+          className={cn("group relative flex flex-col items-center transition-all duration-200", !compact && "hover:scale-105")}
           style={{
-            width: compact ? "12px" : "100px",
-            height: compact ? "28px" : "68px",
+            width: compact ? "54px" : "100px",
+            height: compact ? "16px" : "68px",
             cursor: "pointer",
           }}
           data-testid={`container-block-${container.id}`}
@@ -442,20 +437,13 @@ function ContainerBlock({ container, onClick, compact }: { container: ContainerS
             className="relative w-full h-full rounded-sm overflow-hidden transition-shadow duration-200"
             style={{
               backgroundColor: health.bg,
-              border: `1.5px solid ${health.border}`,
-              boxShadow: `${health.glow}, 0 2px 4px rgba(0,0,0,0.3)`,
+              border: `1px solid ${health.border}`,
+              boxShadow: compact ? "0 1px 2px rgba(0,0,0,0.4)" : `${health.glow}, 0 2px 4px rgba(0,0,0,0.3)`,
             }}
           >
-            <div className="absolute inset-0 opacity-10"
-              style={{
-                backgroundImage: "repeating-linear-gradient(90deg, transparent, transparent 8px, rgba(255,255,255,0.05) 8px, rgba(255,255,255,0.05) 9px)",
-              }}
-            />
-
-            <div className={cn("relative flex flex-col items-center justify-center h-full gap-0.5", compact ? "px-0" : "px-1")}>
+            <div className={cn("relative flex items-center justify-center h-full", compact ? "px-0.5" : "flex-col gap-0.5 px-1")}>
               <span
-                className={cn("font-bold font-mono text-white/90 leading-none drop-shadow-sm", compact ? "text-[5px] tracking-tight" : "text-[11px] tracking-wide")}
-                style={compact ? { writingMode: "vertical-rl", textOrientation: "mixed", transform: "rotate(180deg)", letterSpacing: "-0.5px" } : undefined}
+                className={cn("font-bold font-mono text-white/90 leading-none drop-shadow-sm", compact ? "text-[8px] tracking-tight" : "text-[11px] tracking-wide")}
               >
                 {container.name}
               </span>
@@ -480,7 +468,7 @@ function ContainerBlock({ container, onClick, compact }: { container: ContainerS
             </div>
 
             <div className="absolute inset-0 rounded-sm opacity-0 group-hover:opacity-100 transition-opacity duration-150"
-              style={{ backgroundColor: "rgba(255,255,255,0.08)" }}
+              style={{ backgroundColor: "rgba(255,255,255,0.15)" }}
             />
           </div>
         </button>

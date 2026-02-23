@@ -5,6 +5,7 @@ import { insertMinerSchema, insertAlertRuleSchema, insertScanConfigSchema, inser
 import { z, ZodError } from "zod";
 import { scanIpRange, getScanProgress } from "./scanner";
 import multer from "multer";
+import { openai } from "./replit_integrations/image/client";
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 50 * 1024 * 1024 } });
 
@@ -617,6 +618,108 @@ export async function registerRoutes(
       });
     } catch (err: any) {
       res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post("/api/containers/ai-detect", async (req, res) => {
+    try {
+      const settings = await storage.getSiteSettings();
+      if (!settings?.backgroundImage) {
+        return res.status(400).json({ message: "No background image uploaded. Upload a site plan image first." });
+      }
+
+      const allContainers = await storage.getContainers();
+      if (allContainers.length === 0) {
+        return res.status(400).json({ message: "No containers exist. Create containers first." });
+      }
+
+      const containerNames = allContainers
+        .map((c) => c.name)
+        .sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+
+      const containerMap = new Map(allContainers.map((c) => [c.name, c]));
+      const imageData = settings.backgroundImage;
+
+      const totalContainers = containerNames.length;
+      const prompt = `Look at this aerial/satellite image of a mining site. It contains rectangular shipping containers arranged in groups/rows.
+
+Your task: identify each visible container structure and estimate its position as percentage coordinates (0-100 for x and y, where 0,0 is top-left).
+
+There are ${totalContainers} containers to locate, named: ${containerNames.slice(0, 10).join(", ")}, ... ${containerNames.slice(-5).join(", ")}
+
+Instructions:
+1. Identify distinct groups of containers in the image
+2. For each group, note its position, orientation angle, and count of containers
+3. Assign container names sequentially (C000, C001, ...) to positions, working top-to-bottom, left-to-right within each group
+4. Each container needs: name, x (0-100), y (0-100), rotation (degrees, 0=horizontal)
+
+Return ONLY a JSON array. No markdown, no explanation.
+Format: [{"name":"C000","x":5.2,"y":54.1,"rotation":0}]
+
+If you cannot identify individual containers, return your best estimate of where groups of containers are located and distribute the container names evenly within those groups.`;
+
+      const response = await openai.chat.completions.create({
+        model: "gpt-4o",
+        messages: [
+          {
+            role: "user",
+            content: [
+              { type: "text", text: prompt },
+              {
+                type: "image_url",
+                image_url: { url: imageData, detail: "high" },
+              },
+            ],
+          },
+        ],
+        max_tokens: 16000,
+        temperature: 0.2,
+      });
+
+      const content = response.choices[0]?.message?.content || "";
+      console.log("AI detect response length:", content.length, "chars. First 200:", content.substring(0, 200));
+
+      let jsonStr = content.trim();
+      const codeBlockMatch = jsonStr.match(/```(?:json)?\s*([\s\S]*?)```/);
+      if (codeBlockMatch) {
+        jsonStr = codeBlockMatch[1].trim();
+      }
+
+      let detectedPositions: Array<{ name: string; x: number; y: number; rotation: number }>;
+      try {
+        detectedPositions = JSON.parse(jsonStr);
+      } catch (parseErr) {
+        console.error("AI response parse error. Raw:", content.substring(0, 2000));
+        return res.status(500).json({
+          message: "AI returned invalid JSON. Try using the Wolf Hollow template instead.",
+          raw: content.substring(0, 500),
+        });
+      }
+
+      if (!Array.isArray(detectedPositions)) {
+        return res.status(500).json({ message: "AI response was not an array." });
+      }
+
+      console.log(`AI returned ${detectedPositions.length} positions.`);
+
+      const validPositions = detectedPositions
+        .filter((p) => p.name && typeof p.x === "number" && typeof p.y === "number" && containerMap.has(p.name))
+        .map((p) => ({
+          name: p.name,
+          id: containerMap.get(p.name)!.id,
+          x: Math.max(0, Math.min(100, p.x)),
+          y: Math.max(0, Math.min(100, p.y)),
+          rotation: typeof p.rotation === "number" ? p.rotation : 0,
+        }));
+
+      res.json({
+        detected: validPositions,
+        totalRequested: containerNames.length,
+        totalDetected: validPositions.length,
+      });
+    } catch (err: any) {
+      console.error("AI detect error:", err);
+      res.status(500).json({ message: err.message || "AI detection failed" });
     }
   });
 

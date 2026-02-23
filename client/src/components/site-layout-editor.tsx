@@ -27,6 +27,7 @@ import {
   ZoomIn,
   ZoomOut,
   Maximize2,
+  Sparkles,
 } from "lucide-react";
 import type { Container, SiteSettings } from "@shared/schema";
 import { getWolfHollowTemplate, getWolfHollowContainerNames, wolfHollowMapUrl } from "@/lib/wolf-hollow-template";
@@ -216,6 +217,41 @@ export default function SiteLayoutEditor() {
     },
     onError: () => {
       toast({ title: "Auto-place failed", variant: "destructive" });
+    },
+  });
+
+  const [aiDetectProgress, setAiDetectProgress] = useState("");
+  const aiDetectMutation = useMutation({
+    mutationFn: async () => {
+      setAiDetectProgress("Analyzing site image with AI...");
+      const res = await apiRequest("POST", "/api/containers/ai-detect", {});
+      const data = await res.json();
+      return data as {
+        detected: Array<{ name: string; id: string; x: number; y: number; rotation: number }>;
+        totalRequested: number;
+        totalDetected: number;
+      };
+    },
+    onSuccess: (data) => {
+      const newLayouts = new Map<string, { x: number; y: number; rotation: number }>();
+      for (const pos of data.detected) {
+        newLayouts.set(pos.id, { x: pos.x, y: pos.y, rotation: pos.rotation });
+      }
+      setLayouts(newLayouts);
+      setIsDirty(true);
+      setAiDetectProgress("");
+      toast({
+        title: "AI Detection Complete",
+        description: `Detected ${data.totalDetected} of ${data.totalRequested} containers. Review positions and save when ready.`,
+      });
+    },
+    onError: (err: any) => {
+      setAiDetectProgress("");
+      toast({
+        title: "AI Detection Failed",
+        description: err.message || "Could not detect container positions.",
+        variant: "destructive",
+      });
     },
   });
 
@@ -449,6 +485,19 @@ export default function SiteLayoutEditor() {
             {autoPlaceMutation.isPending ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Wand2 className="h-4 w-4 mr-2" />}
             Auto-place (Wolf Hollow)
           </Button>
+          {backgroundImage && !batchMode && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => aiDetectMutation.mutate()}
+              disabled={aiDetectMutation.isPending}
+              data-testid="button-ai-detect"
+              title="Experimental: Uses AI vision to detect container positions in the uploaded image. Best for small sites. For Wolf Hollow, use the template button instead."
+            >
+              {aiDetectMutation.isPending ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Sparkles className="h-4 w-4 mr-2" />}
+              {aiDetectMutation.isPending ? (aiDetectProgress || "Analyzing...") : "AI Detect (Beta)"}
+            </Button>
+          )}
           {!batchMode && backgroundImage && (
             <Button
               variant="default"

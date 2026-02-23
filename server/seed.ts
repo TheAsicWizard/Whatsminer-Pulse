@@ -178,6 +178,26 @@ export async function seedDatabase() {
 
   log("Seeding database with air-cooled WhatsMiner site layout...", "seed");
 
+  const allCreatedContainerIds: Array<{ id: string; name: string }> = [];
+
+  const layoutNames = Object.keys(containerLayouts.layouts);
+  const airCooledNames = new Set(AIR_COOLED_CONTAINERS.map((c) => c.name));
+  const placeholderNames = layoutNames.filter((n) => !airCooledNames.has(n)).sort();
+
+  if (placeholderNames.length > 0) {
+    const batchSize = 50;
+    for (let i = 0; i < placeholderNames.length; i += batchSize) {
+      const batch = placeholderNames.slice(i, i + batchSize);
+      const created = await db.insert(containers).values(
+        batch.map((name) => ({ name, rackCount: RACKS_PER_CONTAINER, slotsPerRack: SLOTS_PER_RACK }))
+      ).returning();
+      for (const c of created) {
+        allCreatedContainerIds.push({ id: c.id, name: c.name });
+      }
+    }
+    log(`Created ${placeholderNames.length} placeholder containers (layout only)`, "seed");
+  }
+
   const createdContainers = [];
   for (const c of AIR_COOLED_CONTAINERS) {
     const rackCount = RACKS_PER_CONTAINER;
@@ -191,8 +211,9 @@ export async function seedDatabase() {
       ipRangeEnd: c.ipEnd,
     }).returning();
     createdContainers.push({ ...container, ...c });
+    allCreatedContainerIds.push({ id: container.id, name: container.name });
   }
-  log(`Created ${createdContainers.length} containers`, "seed");
+  log(`Created ${createdContainers.length} air-cooled containers with miners`, "seed");
 
   let totalMinersCreated = 0;
   const allCreatedMiners: Array<{ id: string; model: string; status: string; containerId: string; rack: number; slot: number }> = [];
@@ -290,12 +311,12 @@ export async function seedDatabase() {
 
   const layoutMap = containerLayouts.layouts as Record<string, { x: number; y: number; rotation: number }>;
   let layoutsApplied = 0;
-  for (const containerDef of createdContainers) {
-    const layout = layoutMap[containerDef.name];
+  for (const cDef of allCreatedContainerIds) {
+    const layout = layoutMap[cDef.name];
     if (layout) {
       await db.update(containers)
         .set({ layoutX: layout.x, layoutY: layout.y, layoutRotation: layout.rotation })
-        .where(eq(containers.id, containerDef.id));
+        .where(eq(containers.id, cDef.id));
       layoutsApplied++;
     }
   }
@@ -305,5 +326,5 @@ export async function seedDatabase() {
     containerScale: containerLayouts.containerScale,
   });
 
-  log(`Seed complete: ${createdContainers.length} containers, ${totalMinersCreated} miners, ${alertValues.length} alerts, ${layoutsApplied} layouts applied`, "seed");
+  log(`Seed complete: ${allCreatedContainerIds.length} containers, ${totalMinersCreated} miners, ${alertValues.length} alerts, ${layoutsApplied} layouts applied`, "seed");
 }

@@ -2,7 +2,6 @@ import { useState, useRef, useCallback, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Slider } from "@/components/ui/slider";
@@ -19,35 +18,12 @@ import {
   Image,
   Loader2,
   Undo2,
-  Wand2,
-  SkipForward,
-  Mouse,
-  ChevronLeft,
-  ChevronRight,
   ZoomIn,
   ZoomOut,
   Maximize2,
+  SkipForward,
 } from "lucide-react";
 import type { Container, SiteSettings } from "@shared/schema";
-import { getWolfHollowTemplate, getWolfHollowContainerNames, wolfHollowMapUrl } from "@/lib/wolf-hollow-template";
-
-type ContainerLayout = {
-  id: string;
-  name: string;
-  layoutX: number | null;
-  layoutY: number | null;
-  layoutRotation: number | null;
-};
-
-function detectRotationForPosition(xPercent: number, yPercent: number): number {
-  if (xPercent < 45 && yPercent > 28) {
-    const diagonalBoundaryX = 10 + (yPercent - 30) * 0.85;
-    if (xPercent < diagonalBoundaryX + 12 && yPercent > 28 && yPercent < 80) {
-      return 305;
-    }
-  }
-  return 0;
-}
 
 export default function SiteLayoutEditor() {
   const { toast } = useToast();
@@ -55,16 +31,12 @@ export default function SiteLayoutEditor() {
   const imgContainerRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const [selectedContainerId, setSelectedContainerId] = useState<string | null>(null);
   const [layouts, setLayouts] = useState<Map<string, { x: number; y: number; rotation: number }>>(new Map());
   const [isDirty, setIsDirty] = useState(false);
-  const [placingContainerId, setPlacingContainerId] = useState<string | null>(null);
-  const [batchMode, setBatchMode] = useState(false);
-  const [batchQueue, setBatchQueue] = useState<Container[]>([]);
-  const [batchIndex, setBatchIndex] = useState(0);
-  const [batchRotation, setBatchRotation] = useState(0);
-  const [batchAutoRotate, setBatchAutoRotate] = useState(true);
-  const [batchHistory, setBatchHistory] = useState<Array<{ containerId: string; x: number; y: number; rotation: number }>>([]);
+  const [currentRotation, setCurrentRotation] = useState(0);
+  const [placementHistory, setPlacementHistory] = useState<string[]>([]);
+  const [skippedIds, setSkippedIds] = useState<Set<string>>(new Set());
+  const [selectedContainerId, setSelectedContainerId] = useState<string | null>(null);
 
   const [editorZoom, setEditorZoom] = useState(1);
   const [editorPan, setEditorPan] = useState({ x: 0, y: 0 });
@@ -80,6 +52,12 @@ export default function SiteLayoutEditor() {
   });
 
   const containers = containersRaw || [];
+  const sortedContainers = [...containers].sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
+  const unplacedContainers = sortedContainers.filter((c) => !layouts.has(c.id));
+  const availableContainers = unplacedContainers.filter((c) => !skippedIds.has(c.id));
+  const nextContainer = availableContainers[0] || null;
+  const placedCount = layouts.size;
+  const totalCount = containers.length;
 
   const [initialized, setInitialized] = useState(false);
 
@@ -164,58 +142,15 @@ export default function SiteLayoutEditor() {
     },
     onSuccess: () => {
       setLayouts(new Map());
+      setPlacementHistory([]);
+      setSkippedIds(new Set());
       setIsDirty(false);
+      setSelectedContainerId(null);
       queryClient.invalidateQueries({ queryKey: ["/api/containers"] });
       queryClient.invalidateQueries({ queryKey: ["/api/containers/list"] });
       queryClient.invalidateQueries({ queryKey: ["/api/containers/summary"] });
       queryClient.invalidateQueries({ queryKey: ["/api/site-settings"] });
       toast({ title: "Layout cleared", description: "All container positions have been reset." });
-    },
-  });
-
-  const autoPlaceMutation = useMutation({
-    mutationFn: async () => {
-      const response = await fetch(wolfHollowMapUrl);
-      const blob = await response.blob();
-      const formData = new FormData();
-      formData.append("image", new File([blob], "wolf-hollow-site-map.png", { type: "image/png" }));
-      const uploadRes = await fetch("/api/site-settings/background", { method: "POST", body: formData });
-      if (!uploadRes.ok) throw new Error("Background upload failed");
-
-      const templateNames = getWolfHollowContainerNames();
-      const bulkRes = await apiRequest("POST", "/api/containers/bulk-create", { names: templateNames });
-      const bulkData = await bulkRes.json();
-      const allContainers: Container[] = bulkData.containers;
-
-      const template = getWolfHollowTemplate();
-      const layoutArray: Array<{ id: string; layoutX: number | null; layoutY: number | null; layoutRotation: number | null }> = [];
-      const newLayouts = new Map<string, { x: number; y: number; rotation: number }>();
-
-      for (const c of allContainers) {
-        const pos = template.get(c.name);
-        if (pos) {
-          layoutArray.push({ id: c.id, layoutX: pos.x, layoutY: pos.y, layoutRotation: pos.rotation });
-          newLayouts.set(c.id, pos);
-        } else {
-          layoutArray.push({ id: c.id, layoutX: null, layoutY: null, layoutRotation: null });
-        }
-      }
-
-      await apiRequest("POST", "/api/containers/layouts", { layouts: layoutArray });
-      return { newLayouts, totalPlaced: newLayouts.size };
-    },
-    onSuccess: ({ newLayouts, totalPlaced }) => {
-      setLayouts(newLayouts);
-      setIsDirty(false);
-      setInitialized(true);
-      queryClient.invalidateQueries({ queryKey: ["/api/containers"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/containers/list"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/containers/summary"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/site-settings"] });
-      toast({ title: "Layout applied", description: `Wolf Hollow site template applied — ${totalPlaced} containers placed.` });
-    },
-    onError: () => {
-      toast({ title: "Auto-place failed", variant: "destructive" });
     },
   });
 
@@ -234,7 +169,7 @@ export default function SiteLayoutEditor() {
       const mouseY = e.clientY - rect.top;
       const oldZoom = editorZoom;
       const delta = e.deltaY > 0 ? -0.15 : 0.15;
-      const newZoom = Math.min(8, Math.max(0.5, oldZoom + delta));
+      const newZoom = Math.min(8, Math.max(0.3, oldZoom + delta));
       const scale = newZoom / oldZoom;
       setEditorPan((prev) => ({
         x: mouseX - (mouseX - prev.x) * scale,
@@ -282,107 +217,47 @@ export default function SiteLayoutEditor() {
       if (isPanning || e.altKey) return;
       const pos = screenToImagePercent(e.clientX, e.clientY);
       if (!pos) return;
-      const { x, y } = pos;
 
-      if (batchMode && batchIndex < batchQueue.length) {
-        const container = batchQueue[batchIndex];
-        const rotation = batchAutoRotate ? detectRotationForPosition(x, y) : batchRotation;
+      if (nextContainer) {
+        const rotation = currentRotation;
         setLayouts((prev) => {
           const next = new Map(prev);
-          next.set(container.id, { x, y, rotation });
+          next.set(nextContainer.id, { x: pos.x, y: pos.y, rotation });
           return next;
         });
-        setBatchHistory((prev) => [...prev, { containerId: container.id, x, y, rotation }]);
-        setBatchIndex((prev) => prev + 1);
-        if (batchAutoRotate) {
-          setBatchRotation(rotation);
-        }
-        setIsDirty(true);
-        return;
-      }
-
-      if (placingContainerId) {
-        const rotation = detectRotationForPosition(x, y);
-        setLayouts((prev) => {
-          const next = new Map(prev);
-          next.set(placingContainerId, { x, y, rotation });
-          return next;
-        });
-        setSelectedContainerId(placingContainerId);
-        setPlacingContainerId(null);
+        setPlacementHistory((prev) => [...prev, nextContainer.id]);
+        setSelectedContainerId(nextContainer.id);
+        setCurrentRotation(rotation);
         setIsDirty(true);
       }
     },
-    [placingContainerId, batchMode, batchIndex, batchQueue, batchRotation, batchAutoRotate, isPanning, screenToImagePercent]
+    [nextContainer, currentRotation, isPanning, screenToImagePercent]
   );
 
-  const handleBatchUndo = () => {
-    if (batchHistory.length === 0) return;
-    const last = batchHistory[batchHistory.length - 1];
+  const handleUndo = () => {
+    if (placementHistory.length === 0) return;
+    const lastId = placementHistory[placementHistory.length - 1];
+    const lastPos = layouts.get(lastId);
     setLayouts((prev) => {
       const next = new Map(prev);
-      next.delete(last.containerId);
+      next.delete(lastId);
       return next;
     });
-    setBatchHistory((prev) => prev.slice(0, -1));
-    setBatchIndex((prev) => Math.max(0, prev - 1));
-  };
-
-  const handleBatchSkip = () => {
-    if (batchIndex < batchQueue.length) {
-      setBatchIndex((prev) => prev + 1);
+    if (lastPos) {
+      setCurrentRotation(lastPos.rotation);
     }
-  };
-
-  const startBatchMode = () => {
-    const sorted = [...containers].sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
-    const unplaced = sorted.filter((c) => !layouts.has(c.id));
-    if (unplaced.length === 0) {
-      toast({ title: "All containers already placed", description: "Clear the layout first to re-place containers." });
-      return;
-    }
-    setBatchQueue(unplaced);
-    setBatchIndex(0);
-    setBatchHistory([]);
-    setBatchRotation(0);
-    setBatchAutoRotate(true);
-    setBatchMode(true);
-    setPlacingContainerId(null);
-    setSelectedContainerId(null);
-  };
-
-  const startBatchModeAll = () => {
-    const sorted = [...containers].sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
-    setLayouts(new Map());
-    setBatchQueue(sorted);
-    setBatchIndex(0);
-    setBatchHistory([]);
-    setBatchRotation(0);
-    setBatchAutoRotate(true);
-    setBatchMode(true);
-    setPlacingContainerId(null);
+    setPlacementHistory((prev) => prev.slice(0, -1));
     setSelectedContainerId(null);
     setIsDirty(true);
   };
 
-  const finishBatchMode = () => {
-    setBatchMode(false);
-    setBatchQueue([]);
-    setBatchIndex(0);
-    setBatchHistory([]);
-    if (layouts.size > 0) {
-      toast({ title: "Batch placement done", description: `${layouts.size} containers positioned. Don't forget to save!` });
-    }
-  };
-
-  const handleRemoveFromLayout = (containerId: string) => {
-    setLayouts((prev) => {
-      const next = new Map(prev);
-      next.delete(containerId);
+  const handleSkip = () => {
+    if (!nextContainer) return;
+    setSkippedIds((prev) => {
+      const next = new Set(prev);
+      next.add(nextContainer.id);
       return next;
     });
-    if (selectedContainerId === containerId) setSelectedContainerId(null);
-    setIsDirty(true);
   };
 
   const handleRotationChange = (containerId: string, rotation: number) => {
@@ -394,19 +269,24 @@ export default function SiteLayoutEditor() {
       }
       return next;
     });
+    setCurrentRotation(rotation);
+    setIsDirty(true);
+  };
+
+  const handleRemoveFromLayout = (containerId: string) => {
+    setLayouts((prev) => {
+      const next = new Map(prev);
+      next.delete(containerId);
+      return next;
+    });
+    setPlacementHistory((prev) => prev.filter((id) => id !== containerId));
+    if (selectedContainerId === containerId) setSelectedContainerId(null);
     setIsDirty(true);
   };
 
   const backgroundImage = siteSettings?.backgroundImage;
-  const placedCount = layouts.size;
-  const totalCount = containers.length;
-  const unplacedContainers = containers.filter((c) => !layouts.has(c.id));
-  const placedContainers = containers.filter((c) => layouts.has(c.id));
-
   const selectedLayout = selectedContainerId ? layouts.get(selectedContainerId) : null;
   const selectedContainer = selectedContainerId ? containers.find((c) => c.id === selectedContainerId) : null;
-
-  const currentBatchContainer = batchMode && batchIndex < batchQueue.length ? batchQueue[batchIndex] : null;
 
   return (
     <Card>
@@ -416,7 +296,7 @@ export default function SiteLayoutEditor() {
           Site Layout Editor
         </CardTitle>
         <CardDescription>
-          Upload your site photo and place containers where they belong. Use "Batch Place" to click-and-place containers one by one in order.
+          Upload your site photo, then click on the map to place each container. Adjust rotation as needed — the next container will use the same angle.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -439,39 +319,7 @@ export default function SiteLayoutEditor() {
             onChange={handleFileUpload}
             data-testid="input-background-file"
           />
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => autoPlaceMutation.mutate()}
-            disabled={autoPlaceMutation.isPending}
-            data-testid="button-auto-place"
-          >
-            {autoPlaceMutation.isPending ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Wand2 className="h-4 w-4 mr-2" />}
-            Auto-place (Wolf Hollow)
-          </Button>
-          {!batchMode && backgroundImage && (
-            <Button
-              variant="default"
-              size="sm"
-              onClick={startBatchMode}
-              data-testid="button-batch-place"
-            >
-              <Mouse className="h-4 w-4 mr-2" />
-              Batch Place (Unplaced)
-            </Button>
-          )}
-          {!batchMode && backgroundImage && containers.length > 0 && (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={startBatchModeAll}
-              data-testid="button-batch-place-all"
-            >
-              <Mouse className="h-4 w-4 mr-2" />
-              Batch Place (All)
-            </Button>
-          )}
-          {backgroundImage && !batchMode && (
+          {backgroundImage && (
             <Button
               variant="outline"
               size="sm"
@@ -482,7 +330,7 @@ export default function SiteLayoutEditor() {
               Remove Background
             </Button>
           )}
-          {isDirty && !batchMode && (
+          {isDirty && (
             <Button
               size="sm"
               onClick={() => saveMutation.mutate()}
@@ -493,7 +341,7 @@ export default function SiteLayoutEditor() {
               Save Layout
             </Button>
           )}
-          {placedCount > 0 && !batchMode && (
+          {placedCount > 0 && (
             <Button
               variant="destructive"
               size="sm"
@@ -501,120 +349,50 @@ export default function SiteLayoutEditor() {
               disabled={clearAllLayoutsMutation.isPending}
               data-testid="button-clear-layout"
             >
-              <Undo2 className="h-4 w-4 mr-2" />
+              <Trash2 className="h-4 w-4 mr-2" />
               Clear All
             </Button>
           )}
         </div>
 
-        {batchMode && (
-          <div className="bg-primary/10 border border-primary/30 rounded-lg p-3 space-y-3">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <Mouse className="h-4 w-4 text-primary" />
-                <span className="text-sm font-semibold">Batch Placement Mode</span>
-                <Badge variant="secondary" data-testid="text-batch-progress">
-                  {batchIndex}/{batchQueue.length}
-                </Badge>
-              </div>
-              <div className="flex items-center gap-2">
-                <Button variant="outline" size="sm" onClick={handleBatchUndo} disabled={batchHistory.length === 0} data-testid="button-batch-undo">
-                  <Undo2 className="h-3 w-3 mr-1" /> Undo
-                </Button>
-                <Button variant="outline" size="sm" onClick={handleBatchSkip} disabled={!currentBatchContainer} data-testid="button-batch-skip">
-                  <SkipForward className="h-3 w-3 mr-1" /> Skip
-                </Button>
-                {isDirty && (
-                  <Button size="sm" onClick={() => saveMutation.mutate()} disabled={saveMutation.isPending} data-testid="button-batch-save">
-                    {saveMutation.isPending ? <Loader2 className="h-3 w-3 mr-1 animate-spin" /> : <Save className="h-3 w-3 mr-1" />}
-                    Save
-                  </Button>
-                )}
-                <Button variant="secondary" size="sm" onClick={finishBatchMode} data-testid="button-batch-finish">
-                  <Check className="h-3 w-3 mr-1" /> Done
-                </Button>
-              </div>
-            </div>
-
-            {currentBatchContainer ? (
-              <div className="space-y-2">
-                <div className="flex items-center gap-4">
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs text-muted-foreground">Next:</span>
-                    <Badge variant="default" className="text-sm font-mono animate-pulse" data-testid="text-batch-current">
-                      {currentBatchContainer.name}
-                    </Badge>
-                    <span className="text-xs text-muted-foreground">Click on the image to place it</span>
-                  </div>
-                </div>
-                <div className="flex items-center gap-3">
-                  <button
-                    className={`text-[10px] px-2 py-1 rounded transition-colors flex items-center gap-1 ${batchAutoRotate ? "bg-green-600 text-white" : "bg-muted text-muted-foreground hover:bg-muted-foreground/20"}`}
-                    onClick={() => setBatchAutoRotate(!batchAutoRotate)}
-                    data-testid="button-batch-auto-rotate"
-                  >
-                    <RotateCw className="h-3 w-3" />
-                    Auto-angle {batchAutoRotate ? "ON" : "OFF"}
-                  </button>
-                  {batchAutoRotate ? (
-                    <span className="text-[10px] text-muted-foreground">
-                      Using: {batchRotation}° (auto-detected from click position)
-                    </span>
-                  ) : (
-                    <div className="flex items-center gap-2">
-                      <Label className="text-xs text-muted-foreground">Rotation: {batchRotation}°</Label>
-                      <Slider
-                        value={[batchRotation]}
-                        onValueChange={([v]) => setBatchRotation(v)}
-                        min={0}
-                        max={359}
-                        step={1}
-                        className="w-32"
-                        data-testid="slider-batch-rotation"
-                      />
-                      <div className="flex gap-0.5">
-                        {[0, 90, 180, 270, 325].map((deg) => (
-                          <button
-                            key={deg}
-                            className={`text-[9px] px-1.5 py-0.5 rounded transition-colors ${batchRotation === deg ? "bg-primary text-primary-foreground" : "bg-muted hover:bg-muted-foreground/20 text-muted-foreground"}`}
-                            onClick={() => setBatchRotation(deg)}
-                            data-testid={`button-batch-rotation-${deg}`}
-                          >
-                            {deg}°
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              </div>
-            ) : (
-              <div className="text-sm text-muted-foreground flex items-center gap-2">
-                <Check className="h-4 w-4 text-green-500" />
-                All containers in queue have been placed! Click "Save" to keep the positions, or "Done" to exit.
-              </div>
-            )}
-
-            <div className="w-full bg-muted rounded-full h-1.5">
-              <div
-                className="bg-primary h-1.5 rounded-full transition-all duration-300"
-                style={{ width: `${batchQueue.length > 0 ? (batchIndex / batchQueue.length) * 100 : 0}%` }}
-              />
-            </div>
-          </div>
-        )}
-
         <div className="flex gap-4">
           <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2 mb-2">
-              <Badge variant="secondary" data-testid="text-placed-count">
-                {placedCount}/{totalCount} placed
-              </Badge>
-              {placingContainerId && !batchMode && (
-                <Badge variant="default" className="animate-pulse" data-testid="text-placing-indicator">
-                  Click on the image to place {containers.find((c) => c.id === placingContainerId)?.name}
+            <div className="flex items-center justify-between mb-2">
+              <div className="flex items-center gap-2">
+                <Badge variant="secondary" data-testid="text-placed-count">
+                  {placedCount}/{totalCount} placed
                 </Badge>
-              )}
+                {nextContainer && backgroundImage && (
+                  <Badge variant="default" className="animate-pulse font-mono" data-testid="text-next-container">
+                    Next: {nextContainer.name}
+                  </Badge>
+                )}
+              </div>
+              <div className="flex items-center gap-1">
+                {nextContainer && backgroundImage && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={handleSkip}
+                    className="h-7 px-2"
+                    data-testid="button-skip"
+                  >
+                    <SkipForward className="h-3.5 w-3.5 mr-1" />
+                    Skip
+                  </Button>
+                )}
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={handleUndo}
+                  disabled={placementHistory.length === 0}
+                  className="h-7 px-2"
+                  data-testid="button-undo"
+                >
+                  <Undo2 className="h-3.5 w-3.5 mr-1" />
+                  Undo
+                </Button>
+              </div>
             </div>
 
             <div className="flex items-center gap-1 mb-1">
@@ -626,7 +404,7 @@ export default function SiteLayoutEditor() {
                 <ZoomIn className="w-4 h-4" />
               </button>
               <button
-                onClick={() => setEditorZoom((z) => Math.max(0.5, z - 0.3))}
+                onClick={() => setEditorZoom((z) => Math.max(0.3, z - 0.3))}
                 className="p-1.5 rounded hover:bg-muted transition-colors text-muted-foreground hover:text-foreground"
                 data-testid="button-editor-zoom-out"
               >
@@ -648,7 +426,7 @@ export default function SiteLayoutEditor() {
               className="relative border border-border rounded-lg overflow-hidden"
               style={{
                 height: "600px",
-                cursor: isPanning ? "grabbing" : (placingContainerId || (batchMode && currentBatchContainer)) ? "crosshair" : "grab",
+                cursor: isPanning ? "grabbing" : nextContainer && backgroundImage ? "crosshair" : "grab",
                 background: "linear-gradient(135deg, hsl(220, 15%, 8%) 0%, hsl(220, 12%, 11%) 50%, hsl(220, 15%, 8%) 100%)",
               }}
               onClick={handleCanvasClick}
@@ -690,6 +468,7 @@ export default function SiteLayoutEditor() {
                 {Array.from(layouts.entries()).map(([id, pos]) => {
                   const container = containers.find((c) => c.id === id);
                   if (!container) return null;
+                  if (pos.x < 0 || pos.y < 0) return null;
                   const isSelected = selectedContainerId === id;
                   return (
                     <div
@@ -714,9 +493,10 @@ export default function SiteLayoutEditor() {
                         style={{ transform: `scale(${1 / editorZoom})` }}
                         onClick={(e) => {
                           e.stopPropagation();
-                          if (!batchMode) {
-                            setSelectedContainerId(id);
-                            setPlacingContainerId(null);
+                          setSelectedContainerId(id);
+                          const containerLayout = layouts.get(id);
+                          if (containerLayout) {
+                            setCurrentRotation(containerLayout.rotation);
                           }
                         }}
                         data-testid={`layout-container-${id}`}
@@ -730,132 +510,150 @@ export default function SiteLayoutEditor() {
             </div>
           </div>
 
-          {!batchMode && (
-            <div className="w-64 flex-shrink-0 space-y-3">
-              {selectedContainer && selectedLayout && (
-                <Card className="border-primary">
-                  <CardHeader className="py-3 px-3">
-                    <CardTitle className="text-sm">{selectedContainer.name}</CardTitle>
-                  </CardHeader>
-                  <CardContent className="px-3 pb-3 space-y-3">
-                    <div>
-                      <Label className="text-xs text-muted-foreground">Rotation ({Math.round(selectedLayout.rotation)}°)</Label>
-                      <Slider
-                        value={[selectedLayout.rotation]}
-                        onValueChange={([v]) => handleRotationChange(selectedContainer.id, v)}
-                        min={0}
-                        max={359}
-                        step={1}
-                        className="mt-1"
-                        data-testid={`slider-rotation-${selectedContainer.id}`}
-                      />
-                      <div className="flex gap-1 mt-1">
-                        {[0, 45, 90, 135, 180, 225, 270, 315].map((deg) => (
-                          <button
-                            key={deg}
-                            className="text-[9px] px-1 py-0.5 rounded bg-muted hover:bg-muted-foreground/20 text-muted-foreground"
-                            onClick={() => handleRotationChange(selectedContainer.id, deg)}
-                          >
-                            {deg}°
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                    <div className="flex gap-1">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="flex-1 text-xs"
-                        onClick={() => {
-                          setPlacingContainerId(selectedContainer.id);
-                          setSelectedContainerId(null);
-                        }}
-                        data-testid={`button-reposition-${selectedContainer.id}`}
-                      >
-                        <MapPin className="h-3 w-3 mr-1" />
-                        Reposition
-                      </Button>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="text-xs text-red-400"
-                        onClick={() => handleRemoveFromLayout(selectedContainer.id)}
-                        data-testid={`button-remove-container-${selectedContainer.id}`}
-                      >
-                        <X className="h-3 w-3" />
-                      </Button>
-                    </div>
-                  </CardContent>
-                </Card>
-              )}
-
-              <div className="space-y-1">
-                <Label className="text-xs text-muted-foreground font-semibold">
-                  Unplaced ({unplacedContainers.length})
-                </Label>
-                <div className="max-h-[250px] overflow-y-auto space-y-1">
-                  {unplacedContainers.map((c) => (
-                    <button
-                      key={c.id}
-                      className={`
-                        w-full text-left px-2 py-1.5 rounded text-xs font-mono
-                        transition-all
-                        ${placingContainerId === c.id
-                          ? "bg-primary text-primary-foreground"
-                          : "bg-muted/50 hover:bg-muted text-foreground"
-                        }
-                      `}
-                      onClick={() => {
-                        setPlacingContainerId(placingContainerId === c.id ? null : c.id);
-                        setSelectedContainerId(null);
-                      }}
-                      data-testid={`button-place-${c.id}`}
-                    >
-                      <MapPin className="h-3 w-3 inline mr-1" />
-                      {c.name}
-                    </button>
-                  ))}
-                  {unplacedContainers.length === 0 && (
-                    <p className="text-xs text-muted-foreground flex items-center gap-1">
-                      <Check className="h-3 w-3" />
-                      All containers placed
-                    </p>
-                  )}
-                </div>
-              </div>
-
-              {placedContainers.length > 0 && (
-                <div className="space-y-1">
-                  <Label className="text-xs text-muted-foreground font-semibold">
-                    Placed ({placedContainers.length})
+          <div className="w-56 flex-shrink-0 space-y-3">
+            <Card>
+              <CardContent className="p-3 space-y-3">
+                <div>
+                  <Label className="text-xs font-semibold flex items-center gap-1">
+                    <RotateCw className="h-3 w-3" />
+                    Rotation: {currentRotation}°
                   </Label>
-                  <div className="max-h-[150px] overflow-y-auto space-y-1">
-                    {placedContainers.map((c) => (
+                  <Slider
+                    value={[currentRotation]}
+                    onValueChange={([v]) => {
+                      setCurrentRotation(v);
+                      if (selectedContainerId && layouts.has(selectedContainerId)) {
+                        handleRotationChange(selectedContainerId, v);
+                      }
+                    }}
+                    min={0}
+                    max={359}
+                    step={1}
+                    className="mt-2"
+                    data-testid="slider-rotation"
+                  />
+                  <div className="flex gap-1 mt-1.5 flex-wrap">
+                    {[0, 45, 90, 135, 180, 270, 305, 325].map((deg) => (
                       <button
-                        key={c.id}
-                        className={`
-                          w-full text-left px-2 py-1.5 rounded text-xs font-mono
-                          transition-all
-                          ${selectedContainerId === c.id
-                            ? "bg-primary/20 text-primary border border-primary/30"
-                            : "bg-green-900/20 hover:bg-green-900/30 text-green-400"
-                          }
-                        `}
+                        key={deg}
+                        className={`text-[9px] px-1.5 py-0.5 rounded transition-colors ${
+                          currentRotation === deg
+                            ? "bg-primary text-primary-foreground"
+                            : "bg-muted hover:bg-muted-foreground/20 text-muted-foreground"
+                        }`}
                         onClick={() => {
-                          setSelectedContainerId(selectedContainerId === c.id ? null : c.id);
-                          setPlacingContainerId(null);
+                          setCurrentRotation(deg);
+                          if (selectedContainerId && layouts.has(selectedContainerId)) {
+                            handleRotationChange(selectedContainerId, deg);
+                          }
                         }}
-                        data-testid={`button-select-placed-${c.id}`}
+                        data-testid={`button-rotation-${deg}`}
                       >
-                        <Check className="h-3 w-3 inline mr-1" />
-                        {c.name}
+                        {deg}°
                       </button>
                     ))}
                   </div>
                 </div>
-              )}
+                <p className="text-[10px] text-muted-foreground">
+                  Set the angle before clicking, or adjust after placing. The next container will use this same angle.
+                </p>
+              </CardContent>
+            </Card>
+
+            {selectedContainer && selectedLayout && (
+              <Card className="border-primary/50">
+                <CardContent className="p-3 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm font-bold font-mono">{selectedContainer.name}</span>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-6 w-6 p-0 text-red-400 hover:text-red-300"
+                      onClick={() => handleRemoveFromLayout(selectedContainer.id)}
+                      data-testid={`button-remove-${selectedContainer.id}`}
+                    >
+                      <X className="h-3.5 w-3.5" />
+                    </Button>
+                  </div>
+                  <div className="text-[10px] text-muted-foreground font-mono">
+                    Position: ({selectedLayout.x.toFixed(1)}%, {selectedLayout.y.toFixed(1)}%) · {selectedLayout.rotation}°
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
+            <div className="space-y-1">
+              <Label className="text-xs text-muted-foreground font-semibold">
+                Queue ({availableContainers.length})
+              </Label>
+              <div className="max-h-[250px] overflow-y-auto space-y-0.5">
+                {availableContainers.slice(0, 50).map((c, i) => (
+                  <div
+                    key={c.id}
+                    className={`
+                      px-2 py-1 rounded text-xs font-mono
+                      ${i === 0
+                        ? "bg-primary/20 text-primary border border-primary/30 font-bold"
+                        : "bg-muted/30 text-muted-foreground"
+                      }
+                    `}
+                    data-testid={`unplaced-${c.id}`}
+                  >
+                    {i === 0 && <MapPin className="h-3 w-3 inline mr-1" />}
+                    {c.name}
+                  </div>
+                ))}
+                {availableContainers.length > 50 && (
+                  <p className="text-[10px] text-muted-foreground px-2">
+                    ... and {availableContainers.length - 50} more
+                  </p>
+                )}
+                {availableContainers.length === 0 && unplacedContainers.length === 0 && (
+                  <p className="text-xs text-muted-foreground flex items-center gap-1 py-1">
+                    <Check className="h-3 w-3 text-green-500" />
+                    All containers placed!
+                  </p>
+                )}
+                {availableContainers.length === 0 && unplacedContainers.length > 0 && (
+                  <p className="text-xs text-muted-foreground py-1">
+                    All remaining containers are skipped. Restore some from the list below to continue.
+                  </p>
+                )}
+              </div>
             </div>
-          )}
+
+            {skippedIds.size > 0 && (
+              <div className="space-y-1">
+                <Label className="text-xs text-muted-foreground font-semibold">
+                  Skipped ({skippedIds.size})
+                </Label>
+                <div className="max-h-[100px] overflow-y-auto space-y-0.5">
+                  {sortedContainers.filter((c) => skippedIds.has(c.id)).map((c) => (
+                    <div
+                      key={c.id}
+                      className="flex items-center justify-between px-2 py-1 rounded text-xs font-mono bg-muted/30 text-muted-foreground"
+                      data-testid={`skipped-${c.id}`}
+                    >
+                      <span>{c.name}</span>
+                      <button
+                        className="text-[9px] px-1 py-0.5 rounded bg-muted hover:bg-primary/20 hover:text-primary transition-colors"
+                        onClick={() => {
+                          setSkippedIds((prev) => {
+                            const next = new Set(prev);
+                            next.delete(c.id);
+                            return next;
+                          });
+                        }}
+                        data-testid={`button-unskip-${c.id}`}
+                      >
+                        Restore
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
         </div>
       </CardContent>
     </Card>

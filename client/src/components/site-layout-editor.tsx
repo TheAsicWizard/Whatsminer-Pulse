@@ -97,7 +97,9 @@ export default function SiteLayoutEditor() {
     },
   });
 
-  const pendingSavesRef = useRef(0);
+  const saveQueueRef = useRef<Map<string, { id: string; layoutX: number | null; layoutY: number | null; layoutRotation: number | null }>>(new Map());
+  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const isFlushing = useRef(false);
 
   const invalidateLayoutQueries = useCallback(() => {
     queryClient.invalidateQueries({ queryKey: ["/api/containers"] });
@@ -106,23 +108,45 @@ export default function SiteLayoutEditor() {
     queryClient.invalidateQueries({ queryKey: ["/api/site-settings"] });
   }, []);
 
-  const saveContainerLayout = useCallback(async (containerId: string, layoutX: number | null, layoutY: number | null, layoutRotation: number | null) => {
-    pendingSavesRef.current++;
+  const flushSaveQueue = useCallback(async () => {
+    if (isFlushing.current || saveQueueRef.current.size === 0) return;
+    isFlushing.current = true;
     setIsSaving(true);
-    try {
-      await apiRequest("POST", "/api/containers/layouts", {
-        layouts: [{ id: containerId, layoutX, layoutY, layoutRotation }],
-      });
-      invalidateLayoutQueries();
-    } catch {
-      toast({ title: "Auto-save failed", variant: "destructive" });
-    } finally {
-      pendingSavesRef.current--;
-      if (pendingSavesRef.current === 0) {
-        setIsSaving(false);
+    const batch = Array.from(saveQueueRef.current.values());
+    saveQueueRef.current.clear();
+    let retries = 2;
+    while (retries >= 0) {
+      try {
+        await apiRequest("POST", "/api/containers/layouts", { layouts: batch });
+        invalidateLayoutQueries();
+        break;
+      } catch {
+        retries--;
+        if (retries < 0) {
+          toast({ title: "Auto-save failed. Your placements are still in memory — they'll retry on next action.", variant: "destructive" });
+          for (const item of batch) {
+            saveQueueRef.current.set(item.id, item);
+          }
+        } else {
+          await new Promise((r) => setTimeout(r, 1000));
+        }
       }
     }
+    isFlushing.current = false;
+    if (saveQueueRef.current.size === 0) {
+      setIsSaving(false);
+    } else {
+      flushSaveQueue();
+    }
   }, [toast, invalidateLayoutQueries]);
+
+  const saveContainerLayout = useCallback((containerId: string, layoutX: number | null, layoutY: number | null, layoutRotation: number | null) => {
+    saveQueueRef.current.set(containerId, { id: containerId, layoutX, layoutY, layoutRotation });
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    saveTimerRef.current = setTimeout(() => {
+      flushSaveQueue();
+    }, 500);
+  }, [flushSaveQueue]);
 
   const removeBackgroundMutation = useMutation({
     mutationFn: async () => {

@@ -429,6 +429,7 @@ export async function registerRoutes(
   const siteSettingsUpdateSchema = z.object({
     backgroundImage: z.string().nullable().optional(),
     useCustomLayout: z.boolean().optional(),
+    containerScale: z.number().min(0.3).max(3).optional(),
   });
 
   app.patch("/api/site-settings", async (req, res) => {

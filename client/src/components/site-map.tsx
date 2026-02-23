@@ -353,6 +353,7 @@ export function ContainerSummaryMap({ containers, onAssignSlot, onSwapSlot, onUn
                     container={container}
                     onClick={() => setSelectedContainer(container)}
                     compact
+                    containerScale={siteSettings?.containerScale ?? 1}
                   />
                 </div>
               );
@@ -407,7 +408,7 @@ export function ContainerSummaryMap({ containers, onAssignSlot, onSwapSlot, onUn
   );
 }
 
-function ContainerBlock({ container, onClick, compact }: { container: ContainerSummary; onClick: () => void; compact?: boolean }) {
+function ContainerBlock({ container, onClick, compact, containerScale = 1 }: { container: ContainerSummary; onClick: () => void; compact?: boolean; containerScale?: number }) {
   const health = getContainerHealthColor(container);
   const totalSlots = container.rackCount * container.slotsPerRack;
   const healthPct = container.totalAssigned > 0
@@ -426,8 +427,8 @@ function ContainerBlock({ container, onClick, compact }: { container: ContainerS
           onClick={(e) => { e.stopPropagation(); onClick(); }}
           className={cn("group relative flex flex-col items-center transition-all duration-200", !compact && "hover:scale-105")}
           style={{
-            width: compact ? "24px" : "100px",
-            height: compact ? "10px" : "68px",
+            width: compact ? `${24 * containerScale}px` : "100px",
+            height: compact ? `${10 * containerScale}px` : "68px",
             cursor: "pointer",
           }}
           data-testid={`container-block-${container.id}`}
@@ -442,7 +443,8 @@ function ContainerBlock({ container, onClick, compact }: { container: ContainerS
           >
             <div className={cn("relative flex items-center justify-center h-full", compact ? "px-0.5" : "flex-col gap-0.5 px-1")}>
               <span
-                className={cn("font-bold font-mono text-white/90 leading-none drop-shadow-sm", compact ? "text-[4px] tracking-tight" : "text-[11px] tracking-wide")}
+                className={cn("font-bold font-mono text-white/90 leading-none drop-shadow-sm", compact ? "tracking-tight" : "text-[11px] tracking-wide")}
+                style={compact ? { fontSize: `${4 * containerScale}px` } : undefined}
               >
                 {container.name}
               </span>

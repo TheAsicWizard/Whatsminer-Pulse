@@ -106,6 +106,7 @@ export const siteSettings = pgTable("site_settings", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   backgroundImage: text("background_image"),
   useCustomLayout: boolean("use_custom_layout").default(false),
+  containerScale: real("container_scale").default(1.0),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
 

@@ -37,6 +37,7 @@ export default function SiteLayoutEditor() {
   const [skippedIds, setSkippedIds] = useState<Set<string>>(new Set());
   const [selectedContainerId, setSelectedContainerId] = useState<string | null>(null);
 
+  const [containerScale, setContainerScale] = useState(1.0);
   const [editorZoom, setEditorZoom] = useState(1);
   const [editorPan, setEditorPan] = useState({ x: 0, y: 0 });
   const [isPanning, setIsPanning] = useState(false);
@@ -72,6 +73,12 @@ export default function SiteLayoutEditor() {
       setInitialized(true);
     }
   }, [containers, initialized]);
+
+  useEffect(() => {
+    if (siteSettings?.containerScale != null) {
+      setContainerScale(siteSettings.containerScale);
+    }
+  }, [siteSettings?.containerScale]);
 
   const uploadMutation = useMutation({
     mutationFn: async (file: File) => {
@@ -491,13 +498,17 @@ export default function SiteLayoutEditor() {
                     >
                       <div
                         className={`
-                          px-0.5 py-px rounded text-[4px] font-bold cursor-pointer whitespace-nowrap
+                          rounded font-bold cursor-pointer whitespace-nowrap
                           transition-all
                           ${isSelected
                             ? "bg-primary text-primary-foreground ring-2 ring-primary ring-offset-1 ring-offset-background"
                             : "bg-amber-600/90 text-white hover:bg-amber-500/90"
                           }
                         `}
+                        style={{
+                          fontSize: `${4 * containerScale}px`,
+                          padding: `${1 * containerScale}px ${2 * containerScale}px`,
+                        }}
                         onClick={(e) => {
                           e.stopPropagation();
                           setSelectedContainerId(id);
@@ -564,6 +575,35 @@ export default function SiteLayoutEditor() {
                 <p className="text-[10px] text-muted-foreground">
                   Set the angle before clicking, or adjust after placing. The next container will use this same angle.
                 </p>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardContent className="p-3 space-y-2">
+                <Label className="text-xs font-semibold flex items-center gap-1">
+                  <Maximize2 className="h-3 w-3" />
+                  Label Size: {Math.round(containerScale * 100)}%
+                </Label>
+                <Slider
+                  value={[containerScale]}
+                  onValueChange={([v]) => {
+                    setContainerScale(v);
+                  }}
+                  onValueCommit={([v]) => {
+                    apiRequest("PATCH", "/api/site-settings", { containerScale: v }).then(() => {
+                      queryClient.invalidateQueries({ queryKey: ["/api/site-settings"] });
+                    });
+                  }}
+                  min={0.3}
+                  max={3}
+                  step={0.1}
+                  className="mt-2"
+                  data-testid="slider-container-scale"
+                />
+                <div className="flex justify-between text-[9px] text-muted-foreground">
+                  <span>Small</span>
+                  <span>Large</span>
+                </div>
               </CardContent>
             </Card>
 

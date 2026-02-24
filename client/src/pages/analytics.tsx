@@ -2,7 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { formatHashrate, formatPower } from "@/lib/format";
+import { formatHashrate, formatPower, formatTemp } from "@/lib/format";
 import {
   BarChart,
   Bar,
@@ -395,9 +395,9 @@ export default function Analytics() {
                     contentStyle={tooltipStyle}
                     labelStyle={{ color: "hsl(220, 10%, 55%)" }}
                     formatter={(value: number, name: string) => {
-                      if (name === "hashrate") return [formatHashrate(value), "Hashrate"];
-                      if (name === "power") return [formatPower(value), "Power"];
-                      return [`${value}°C`, "Temp"];
+                      if (name === "Hashrate") return [formatHashrate(value), "Hashrate"];
+                      if (name === "Power") return [formatPower(value), "Power"];
+                      return [formatTemp(value), "Temp"];
                     }}
                   />
                   <Legend

@@ -31,6 +31,7 @@ Real-time WhatsMiner mining fleet monitoring dashboard with health alerts, perfo
 ## Key Features
 - Fleet overview dashboard with real-time stats and Site Map visualization
 - **Site Map (Top-Down Aerial View)**: Bird's-eye view of the entire mine site showing containers as colored rectangles in rows (8 per row)
+  - Heat map overlay modes: Health Status (default), Temperature, Hashrate, Power - switchable via dropdown
   - Color-coded by health: green=healthy, amber=warnings, red=critical issues, gray=offline/empty
   - Mini health bars on each container showing status breakdown
   - Hover tooltips with quick stats (online/total miners, hashrate, power, avg temp)

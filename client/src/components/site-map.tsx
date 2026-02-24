@@ -7,7 +7,8 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Box, Server, Cpu, Zap, Thermometer, Settings, ZoomIn, ZoomOut, Maximize2, ArrowLeft } from "lucide-react";
+import { Box, Server, Cpu, Zap, Thermometer, Settings, ZoomIn, ZoomOut, Maximize2, ArrowLeft, Palette } from "lucide-react";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import type { MinerWithLatest, ContainerWithSlots, Container, SiteSettings } from "@shared/schema";
 import { cn } from "@/lib/utils";
 import { wolfHollowMapUrl } from "@/lib/wolf-hollow-template";
@@ -123,6 +124,65 @@ function getContainerHealthColor(c: ContainerSummary): { bg: string; border: str
   return { bg: "#166534", border: "#16a34a", glow: "none", label: "healthy" };
 }
 
+type HeatMapMode = "health" | "temperature" | "hashrate" | "power";
+
+function getTemperatureColor(avgTemp: number): { bg: string; border: string; glow: string } {
+  if (avgTemp <= 0) return { bg: "#374151", border: "#4b5563", glow: "none" };
+  if (avgTemp < 55) return { bg: "#14532d", border: "#22c55e", glow: "0 0 6px rgba(34,197,94,0.3)" };
+  if (avgTemp < 65) return { bg: "#166534", border: "#16a34a", glow: "none" };
+  if (avgTemp < 75) return { bg: "#713f12", border: "#d97706", glow: "none" };
+  if (avgTemp < 85) return { bg: "#78350f", border: "#f59e0b", glow: "0 0 6px rgba(245,158,11,0.3)" };
+  return { bg: "#991b1b", border: "#ef4444", glow: "0 0 8px rgba(239,68,68,0.4)" };
+}
+
+function getHashrateColor(hashrate: number, fleetAvg: number): { bg: string; border: string; glow: string } {
+  if (hashrate <= 0) return { bg: "#374151", border: "#4b5563", glow: "none" };
+  const ratio = fleetAvg > 0 ? hashrate / fleetAvg : 1;
+  if (ratio >= 0.95) return { bg: "#14532d", border: "#22c55e", glow: "0 0 6px rgba(34,197,94,0.3)" };
+  if (ratio >= 0.85) return { bg: "#166534", border: "#16a34a", glow: "none" };
+  if (ratio >= 0.7) return { bg: "#713f12", border: "#d97706", glow: "none" };
+  if (ratio >= 0.5) return { bg: "#78350f", border: "#f59e0b", glow: "0 0 6px rgba(245,158,11,0.3)" };
+  return { bg: "#991b1b", border: "#ef4444", glow: "0 0 8px rgba(239,68,68,0.4)" };
+}
+
+function getPowerColor(totalPower: number, fleetAvg: number): { bg: string; border: string; glow: string } {
+  if (totalPower <= 0) return { bg: "#374151", border: "#4b5563", glow: "none" };
+  const ratio = fleetAvg > 0 ? totalPower / fleetAvg : 1;
+  if (ratio <= 0.85) return { bg: "#14532d", border: "#22c55e", glow: "0 0 6px rgba(34,197,94,0.3)" };
+  if (ratio <= 0.95) return { bg: "#166534", border: "#16a34a", glow: "none" };
+  if (ratio <= 1.1) return { bg: "#713f12", border: "#d97706", glow: "none" };
+  if (ratio <= 1.25) return { bg: "#78350f", border: "#f59e0b", glow: "0 0 6px rgba(245,158,11,0.3)" };
+  return { bg: "#991b1b", border: "#ef4444", glow: "0 0 8px rgba(239,68,68,0.4)" };
+}
+
+function getContainerColorByMode(
+  container: ContainerSummary,
+  mode: HeatMapMode,
+  fleetAvgHashrate: number,
+  fleetAvgPower: number,
+): { bg: string; border: string; glow: string } {
+  if (container.totalAssigned === 0) return { bg: "#374151", border: "#4b5563", glow: "none" };
+  switch (mode) {
+    case "temperature":
+      return getTemperatureColor(container.avgTemp);
+    case "hashrate":
+      return getHashrateColor(container.totalHashrate / Math.max(1, container.totalAssigned), fleetAvgHashrate);
+    case "power":
+      return getPowerColor(container.totalPower / Math.max(1, container.totalAssigned), fleetAvgPower);
+    default: {
+      const h = getContainerHealthColor(container);
+      return { bg: h.bg, border: h.border, glow: h.glow };
+    }
+  }
+}
+
+const heatMapModeLabels: Record<HeatMapMode, { label: string; icon: typeof Thermometer }> = {
+  health: { label: "Health Status", icon: Server },
+  temperature: { label: "Temperature", icon: Thermometer },
+  hashrate: { label: "Hashrate", icon: Cpu },
+  power: { label: "Power Draw", icon: Zap },
+};
+
 const LAYOUT_WIDTH = 1400;
 const LAYOUT_HEIGHT = 1000;
 
@@ -130,6 +190,7 @@ export function ContainerSummaryMap({ containers, onAssignSlot, onSwapSlot, onUn
   const [selectedContainer, setSelectedContainer] = useState<ContainerSummary | null>(null);
   const [zoom, setZoom] = useState<number | null>(null);
   const [pan, setPan] = useState({ x: 0, y: 0 });
+  const [heatMapMode, setHeatMapMode] = useState<HeatMapMode>("health");
   const [isPanning, setIsPanning] = useState(false);
   const [panStart, setPanStart] = useState({ x: 0, y: 0 });
   const viewportRef = useRef<HTMLDivElement>(null);
@@ -228,6 +289,14 @@ export function ContainerSummaryMap({ containers, onAssignSlot, onSwapSlot, onUn
     { online: 0, warning: 0, critical: 0, offline: 0, assigned: 0, empty: 0 }
   );
 
+  const activeContainers = containers.filter((c) => c.totalAssigned > 0);
+  const fleetAvgHashrate = activeContainers.length > 0
+    ? activeContainers.reduce((s, c) => s + c.totalHashrate / Math.max(1, c.totalAssigned), 0) / activeContainers.length
+    : 0;
+  const fleetAvgPower = activeContainers.length > 0
+    ? activeContainers.reduce((s, c) => s + c.totalPower / Math.max(1, c.totalAssigned), 0) / activeContainers.length
+    : 0;
+
   const COLS = 8;
   const rows: ContainerSummary[][] = [];
   for (let i = 0; i < containers.length; i += COLS) {
@@ -267,35 +336,77 @@ export function ContainerSummaryMap({ containers, onAssignSlot, onSwapSlot, onUn
     <div className="space-y-3" data-testid="top-down-site-map">
       <div className="flex items-center justify-between flex-wrap gap-2">
         <div className="flex items-center gap-4 flex-wrap">
-          <LegendItem color="bg-emerald-500" label="Online" count={totals.online} />
-          <LegendItem color="bg-amber-400" label="Warning" count={totals.warning} />
-          <LegendItem color="bg-red-500" label="Critical" count={totals.critical} />
-          <LegendItem color="bg-gray-400 dark:bg-gray-600" label="Offline" count={totals.offline} />
-          <LegendItem color="bg-muted/50 border border-dashed border-muted-foreground/30" label="Empty" count={totals.empty} />
+          {heatMapMode === "health" ? (
+            <>
+              <LegendItem color="bg-emerald-500" label="Online" count={totals.online} />
+              <LegendItem color="bg-amber-400" label="Warning" count={totals.warning} />
+              <LegendItem color="bg-red-500" label="Critical" count={totals.critical} />
+              <LegendItem color="bg-gray-400 dark:bg-gray-600" label="Offline" count={totals.offline} />
+              <LegendItem color="bg-muted/50 border border-dashed border-muted-foreground/30" label="Empty" count={totals.empty} />
+            </>
+          ) : heatMapMode === "temperature" ? (
+            <>
+              <GradientLegendItem color="#14532d" border="#22c55e" label="< 55°C" />
+              <GradientLegendItem color="#166534" border="#16a34a" label="55-65°C" />
+              <GradientLegendItem color="#713f12" border="#d97706" label="65-75°C" />
+              <GradientLegendItem color="#78350f" border="#f59e0b" label="75-85°C" />
+              <GradientLegendItem color="#991b1b" border="#ef4444" label="> 85°C" />
+            </>
+          ) : heatMapMode === "hashrate" ? (
+            <>
+              <GradientLegendItem color="#14532d" border="#22c55e" label="≥ 95% avg" />
+              <GradientLegendItem color="#166534" border="#16a34a" label="85-95%" />
+              <GradientLegendItem color="#713f12" border="#d97706" label="70-85%" />
+              <GradientLegendItem color="#78350f" border="#f59e0b" label="50-70%" />
+              <GradientLegendItem color="#991b1b" border="#ef4444" label="< 50%" />
+            </>
+          ) : (
+            <>
+              <GradientLegendItem color="#14532d" border="#22c55e" label="Low draw" />
+              <GradientLegendItem color="#166534" border="#16a34a" label="Below avg" />
+              <GradientLegendItem color="#713f12" border="#d97706" label="Average" />
+              <GradientLegendItem color="#78350f" border="#f59e0b" label="Above avg" />
+              <GradientLegendItem color="#991b1b" border="#ef4444" label="High draw" />
+            </>
+          )}
         </div>
-        <div className="flex items-center gap-1">
-          <button
-            onClick={() => setZoom((z) => Math.min(3, (z ?? 0.5) + 0.2))}
-            className="p-1.5 rounded hover:bg-muted transition-colors text-muted-foreground hover:text-foreground"
-            data-testid="button-zoom-in"
-          >
-            <ZoomIn className="w-4 h-4" />
-          </button>
-          <button
-            onClick={() => setZoom((z) => Math.max(0.3, (z ?? 0.5) - 0.2))}
-            className="p-1.5 rounded hover:bg-muted transition-colors text-muted-foreground hover:text-foreground"
-            data-testid="button-zoom-out"
-          >
-            <ZoomOut className="w-4 h-4" />
-          </button>
-          <button
-            onClick={resetView}
-            className="p-1.5 rounded hover:bg-muted transition-colors text-muted-foreground hover:text-foreground"
-            data-testid="button-reset-view"
-          >
-            <Maximize2 className="w-4 h-4" />
-          </button>
-          <span className="text-[10px] text-muted-foreground font-mono ml-1 w-8 text-center">{Math.round(currentZoom * 100)}%</span>
+        <div className="flex items-center gap-2">
+          <Select value={heatMapMode} onValueChange={(v) => setHeatMapMode(v as HeatMapMode)}>
+            <SelectTrigger className="h-7 w-[150px] text-xs" data-testid="select-heatmap-mode">
+              <Palette className="w-3 h-3 mr-1 shrink-0" />
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="health">Health Status</SelectItem>
+              <SelectItem value="temperature">Temperature</SelectItem>
+              <SelectItem value="hashrate">Hashrate</SelectItem>
+              <SelectItem value="power">Power Draw</SelectItem>
+            </SelectContent>
+          </Select>
+          <div className="flex items-center gap-1">
+            <button
+              onClick={() => setZoom((z) => Math.min(3, (z ?? 0.5) + 0.2))}
+              className="p-1.5 rounded hover:bg-muted transition-colors text-muted-foreground hover:text-foreground"
+              data-testid="button-zoom-in"
+            >
+              <ZoomIn className="w-4 h-4" />
+            </button>
+            <button
+              onClick={() => setZoom((z) => Math.max(0.3, (z ?? 0.5) - 0.2))}
+              className="p-1.5 rounded hover:bg-muted transition-colors text-muted-foreground hover:text-foreground"
+              data-testid="button-zoom-out"
+            >
+              <ZoomOut className="w-4 h-4" />
+            </button>
+            <button
+              onClick={resetView}
+              className="p-1.5 rounded hover:bg-muted transition-colors text-muted-foreground hover:text-foreground"
+              data-testid="button-reset-view"
+            >
+              <Maximize2 className="w-4 h-4" />
+            </button>
+            <span className="text-[10px] text-muted-foreground font-mono ml-1 w-8 text-center">{Math.round(currentZoom * 100)}%</span>
+          </div>
         </div>
       </div>
 
@@ -355,6 +466,9 @@ export function ContainerSummaryMap({ containers, onAssignSlot, onSwapSlot, onUn
                     onClick={() => setSelectedContainer(container)}
                     compact
                     containerScale={siteSettings?.containerScale ?? 1}
+                    heatMapMode={heatMapMode}
+                    fleetAvgHashrate={fleetAvgHashrate}
+                    fleetAvgPower={fleetAvgPower}
                   />
                 </div>
               );
@@ -390,6 +504,9 @@ export function ContainerSummaryMap({ containers, onAssignSlot, onSwapSlot, onUn
                       key={container.id}
                       container={container}
                       onClick={() => setSelectedContainer(container)}
+                      heatMapMode={heatMapMode}
+                      fleetAvgHashrate={fleetAvgHashrate}
+                      fleetAvgPower={fleetAvgPower}
                     />
                   ))}
                 </div>
@@ -409,8 +526,9 @@ export function ContainerSummaryMap({ containers, onAssignSlot, onSwapSlot, onUn
   );
 }
 
-function ContainerBlock({ container, onClick, compact, containerScale = 1 }: { container: ContainerSummary; onClick: () => void; compact?: boolean; containerScale?: number }) {
+function ContainerBlock({ container, onClick, compact, containerScale = 1, heatMapMode = "health", fleetAvgHashrate = 0, fleetAvgPower = 0 }: { container: ContainerSummary; onClick: () => void; compact?: boolean; containerScale?: number; heatMapMode?: HeatMapMode; fleetAvgHashrate?: number; fleetAvgPower?: number }) {
   const health = getContainerHealthColor(container);
+  const modeColor = getContainerColorByMode(container, heatMapMode, fleetAvgHashrate, fleetAvgPower);
   const totalSlots = container.rackCount * container.slotsPerRack;
   const healthPct = container.totalAssigned > 0
     ? Math.round((container.onlineCount / container.totalAssigned) * 100)
@@ -437,9 +555,9 @@ function ContainerBlock({ container, onClick, compact, containerScale = 1 }: { c
           <div
             className="relative w-full h-full rounded-sm overflow-hidden transition-shadow duration-200"
             style={{
-              backgroundColor: health.bg,
-              border: `1px solid ${health.border}`,
-              boxShadow: compact ? "0 1px 2px rgba(0,0,0,0.4)" : `${health.glow}, 0 2px 4px rgba(0,0,0,0.3)`,
+              backgroundColor: modeColor.bg,
+              border: `1px solid ${modeColor.border}`,
+              boxShadow: compact ? "0 1px 2px rgba(0,0,0,0.4)" : `${modeColor.glow}, 0 2px 4px rgba(0,0,0,0.3)`,
             }}
           >
             <div className={cn("relative flex items-center justify-center h-full", compact ? "px-0.5" : "flex-col gap-0.5 px-1")}>
@@ -841,6 +959,18 @@ function LegendItem({ color, label, count }: { color: string; label: string; cou
       <span className="text-xs text-muted-foreground">
         {label}: <span className="font-mono font-medium">{count.toLocaleString()}</span>
       </span>
+    </div>
+  );
+}
+
+function GradientLegendItem({ color, border, label }: { color: string; border: string; label: string }) {
+  return (
+    <div className="flex items-center gap-1.5">
+      <span
+        className="w-3 h-3 rounded-sm"
+        style={{ backgroundColor: color, border: `1px solid ${border}` }}
+      />
+      <span className="text-xs text-muted-foreground">{label}</span>
     </div>
   );
 }

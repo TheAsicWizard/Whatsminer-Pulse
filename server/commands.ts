@@ -233,7 +233,7 @@ export async function sendMinerCommand(
 
     if (isError || isInvalidMsg) {
       const authInfo = needsAuth
-        ? (token ? `(auth: token obtained)` : apiPassword ? `(auth: token failed)` : `(auth: no password provided)`)
+        ? (authResult ? `(auth: token obtained)` : apiPassword ? `(auth: token failed)` : `(auth: no password provided)`)
         : `(no auth needed)`;
       return {
         success: false,

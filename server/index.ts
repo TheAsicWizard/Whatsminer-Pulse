@@ -64,13 +64,17 @@ app.use((req, res, next) => {
   const { seedDatabase } = await import("./seed");
   const { startRealPoller } = await import("./poller");
 
-  try {
-    await import("./db");
-    const { execSync } = await import("child_process");
-    execSync("npx drizzle-kit push --force", { stdio: "inherit" });
-    await seedDatabase();
-  } catch (err) {
-    console.error("Database setup error:", err);
+  const { hasDatabase } = await import("./db");
+  if (hasDatabase) {
+    try {
+      const { execSync } = await import("child_process");
+      execSync("npx drizzle-kit push --force", { stdio: "inherit" });
+      await seedDatabase();
+    } catch (err) {
+      console.error("Database setup error:", err);
+    }
+  } else {
+    log("No DATABASE_URL set — running without database (scanning & commands still work)", "startup");
   }
 
   await registerRoutes(httpServer, app);

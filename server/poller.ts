@@ -1,4 +1,4 @@
-import { db } from "./db";
+import { db, hasDatabase } from "./db";
 import { miners, minerSnapshots, alerts, alertRules } from "@shared/schema";
 import { eq, and } from "drizzle-orm";
 import { pollRealMiner } from "./scanner";
@@ -127,6 +127,10 @@ async function pollRealMiners() {
 let pollerInterval: ReturnType<typeof setInterval> | null = null;
 
 export function startRealPoller() {
+  if (!hasDatabase) {
+    log("No database — poller disabled", "poller");
+    return;
+  }
   log("Starting real miner poller (30s interval)", "poller");
   if (pollerInterval) clearInterval(pollerInterval);
   pollerInterval = setInterval(pollRealMiners, 30000);

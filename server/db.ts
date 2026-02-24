@@ -2,8 +2,10 @@ import { drizzle } from "drizzle-orm/node-postgres";
 import pg from "pg";
 import * as schema from "@shared/schema";
 
-const pool = new pg.Pool({
-  connectionString: process.env.DATABASE_URL,
-});
+export const hasDatabase = !!process.env.DATABASE_URL;
 
-export const db = drizzle(pool, { schema });
+const pool = hasDatabase
+  ? new pg.Pool({ connectionString: process.env.DATABASE_URL })
+  : null;
+
+export const db = pool ? drizzle(pool, { schema }) : null as any;

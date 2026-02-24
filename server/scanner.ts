@@ -3,8 +3,10 @@ import type { ScanResult, ScanProgress, BulkScanProgress } from "@shared/schema"
 import { log } from "./index";
 
 const SCAN_TIMEOUT = 3000;
+const BULK_SCAN_TIMEOUT = 1500;
 const MAX_CONCURRENT = 20;
-const BULK_MAX_CONCURRENT = 10;
+const BULK_MAX_CONCURRENT = 100;
+const BULK_PROBE_CONCURRENT = 20;
 
 const activeScanProgress = new Map<string, ScanProgress>();
 let bulkScanProgress: BulkScanProgress | null = null;
@@ -40,6 +42,25 @@ export function generateIpRange(startIp: string, endIp: string): string[] {
     ips.push(intToIp(start + i));
   }
   return ips;
+}
+
+function quickPortCheck(host: string, port: number, timeout: number = BULK_SCAN_TIMEOUT): Promise<boolean> {
+  return new Promise((resolve) => {
+    const socket = new net.Socket();
+    socket.setTimeout(timeout);
+    socket.connect(port, host, () => {
+      socket.destroy();
+      resolve(true);
+    });
+    socket.on("timeout", () => {
+      socket.destroy();
+      resolve(false);
+    });
+    socket.on("error", () => {
+      socket.destroy();
+      resolve(false);
+    });
+  });
 }
 
 function queryCgminerApi(host: string, port: number, command: string): Promise<any> {
@@ -293,28 +314,45 @@ export async function scanIpRangeThrottled(
   onProgress?: (scanned: number, found: number) => void
 ): Promise<ScanResult[]> {
   const ips = generateIpRange(startIp, endIp);
-  const allResults: ScanResult[] = [];
+  const reachableIps: string[] = [];
+  let scannedCount = 0;
 
   for (let i = 0; i < ips.length; i += BULK_MAX_CONCURRENT) {
     const batch = ips.slice(i, i + BULK_MAX_CONCURRENT);
+    const checks = await Promise.all(
+      batch.map(async (ip) => {
+        const open = await quickPortCheck(ip, port);
+        return { ip, open };
+      })
+    );
+
+    for (const check of checks) {
+      if (check.open) reachableIps.push(check.ip);
+    }
+
+    scannedCount = Math.min(i + BULK_MAX_CONCURRENT, ips.length);
+    if (onProgress) {
+      onProgress(scannedCount, reachableIps.length);
+    }
+  }
+
+  log(`Port check complete: ${reachableIps.length} reachable out of ${ips.length} IPs`, "scanner");
+
+  const allResults: ScanResult[] = [];
+  for (let i = 0; i < reachableIps.length; i += BULK_PROBE_CONCURRENT) {
+    const batch = reachableIps.slice(i, i + BULK_PROBE_CONCURRENT);
     const tasks = batch.map((ip) => () => probeMiner(ip, port));
     const results = await runBatch(tasks);
 
     for (const result of results) {
-      allResults.push(result);
       if (result.found) {
+        allResults.push(result);
         log(`Found miner at ${result.ip}:${port} - ${result.model}`, "scanner");
       }
     }
-    if (onProgress) {
-      onProgress(
-        Math.min(i + BULK_MAX_CONCURRENT, ips.length),
-        allResults.filter((r) => r.found).length
-      );
-    }
   }
 
-  return allResults.filter((r) => r.found);
+  return allResults;
 }
 
 export function initBulkScan(totalContainers: number, totalIps: number): void {

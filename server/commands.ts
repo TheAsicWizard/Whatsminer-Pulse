@@ -17,18 +17,12 @@ function sendTcpCommand(host: string, port: number, payload: object): Promise<an
   return new Promise((resolve, reject) => {
     const socket = new net.Socket();
     let data = "";
+    let resolved = false;
 
-    socket.setTimeout(CMD_TIMEOUT);
-
-    socket.connect(port, host, () => {
-      socket.write(JSON.stringify(payload));
-    });
-
-    socket.on("data", (chunk) => {
-      data += chunk.toString();
-    });
-
-    socket.on("end", () => {
+    function tryResolve() {
+      if (resolved) return;
+      resolved = true;
+      socket.destroy();
       try {
         const cleaned = data.replace(/\0/g, "").trim();
         if (cleaned) {
@@ -39,16 +33,39 @@ function sendTcpCommand(host: string, port: number, payload: object): Promise<an
       } catch {
         resolve({ raw: data.substring(0, 500) });
       }
+    }
+
+    socket.setTimeout(CMD_TIMEOUT);
+
+    socket.connect(port, host, () => {
+      socket.write(JSON.stringify(payload));
+    });
+
+    socket.on("data", (chunk) => {
+      data += chunk.toString();
+      if (chunk.toString().includes("\0")) {
+        tryResolve();
+      }
+    });
+
+    socket.on("end", () => {
+      tryResolve();
     });
 
     socket.on("timeout", () => {
-      socket.destroy();
-      reject(new Error("Connection timeout — miner not reachable"));
+      if (!resolved) {
+        resolved = true;
+        socket.destroy();
+        reject(new Error("Connection timeout — miner not reachable"));
+      }
     });
 
     socket.on("error", (err) => {
-      socket.destroy();
-      reject(err);
+      if (!resolved) {
+        resolved = true;
+        socket.destroy();
+        reject(err);
+      }
     });
   });
 }

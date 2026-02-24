@@ -4,7 +4,7 @@ import md5crypt_ from "apache-md5";
 const md5crypt = md5crypt_ as unknown as (password: string, salt: string) => string;
 import { log } from "./index";
 
-const CMD_TIMEOUT = 5000;
+const CMD_TIMEOUT = 10000;
 
 interface CommandResult {
   success: boolean;
@@ -152,7 +152,7 @@ export async function sendMinerCommand(
   apiPassword?: string,
 ): Promise<CommandResult> {
   const apiCmd = API_CMD_MAP[command] || command;
-  log(`Sending command '${apiCmd}' (${command}) to ${host}:${port}`, "commands");
+  log(`Sending command '${apiCmd}' (${command}) to ${host}:${port} [timeout=${CMD_TIMEOUT}ms]`, "commands");
 
   try {
     const writeCommands = [

@@ -23,6 +23,7 @@ Real-time WhatsMiner mining fleet monitoring dashboard with health alerts, perfo
 - `server/db.ts` - Database connection
 - `server/storage.ts` - Data access layer (IStorage interface + DatabaseStorage)
 - `server/simulation.ts` - Simulated miner telemetry polling (source="simulation")
+- `server/commands.ts` - Miner command sender: CGMiner TCP commands with WhatsMiner token auth
 - `server/scanner.ts` - Network scanner: IP range scanning, CGMiner API probe, real miner telemetry polling
 - `server/poller.ts` - Real miner poller: polls miners with source="scanned" every 30s
 - `server/seed.ts` - Database seed data (47 containers, 22K+ miners, alert rules)
@@ -65,6 +66,13 @@ Real-time WhatsMiner mining fleet monitoring dashboard with health alerts, perfo
   - Auto-assigns miners to correct slots by matching MAC addresses after network scan
   - Scanner captures MAC address from CGMiner API (summary, stats, get_miner_info commands)
   - If a miner's IP changes (DHCP), rescan detects same MAC and updates the IP without losing position
+- **Miner Commands**: Send CGMiner API commands to miners directly from the detail page
+  - Quick commands: Restart, Get Summary, Get PSU Info, Get Firmware Version
+  - Configuration commands: Update Pools (URL/worker/password), Set Power Mode (20-100%), Set Target Frequency
+  - Dangerous commands: Power Off (with confirmation dialog)
+  - WhatsMiner token-based API authentication for write commands on newer firmware
+  - Simulated responses for demo miners, real TCP commands for scanned miners
+  - Command log tracks all sent commands with success/failure status and timestamps
 - Dark/light theme support
 - Simulated data for demo purposes alongside real miner support
 

@@ -1,6 +1,6 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useParams, Link } from "wouter";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -10,6 +10,23 @@ import { StatusIndicator, getMinerStatus } from "@/components/status-indicator";
 import { formatHashrate, formatPower, formatTemp, formatUptime, formatEfficiency } from "@/lib/format";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import {
   ArrowLeft,
   Cpu,
@@ -24,6 +41,16 @@ import {
   StickyNote,
   Save,
   Loader2,
+  Terminal,
+  RotateCcw,
+  PowerOff,
+  Settings,
+  Server,
+  CheckCircle2,
+  XCircle,
+  AlertTriangle,
+  ChevronDown,
+  ChevronUp,
 } from "lucide-react";
 import {
   AreaChart,
@@ -295,6 +322,8 @@ export default function MinerDetail() {
         </Card>
       )}
 
+      <MinerCommandPanel minerId={miner.id} minerIp={miner.ipAddress} minerSource={miner.source} />
+
       <Card>
         <CardHeader className="pb-2">
           <CardTitle className="text-sm font-medium flex items-center gap-2">
@@ -356,3 +385,436 @@ function DetailStat({
     </Card>
   );
 }
+
+type CommandDef = {
+  id: string;
+  label: string;
+  description: string;
+  dangerous: boolean;
+  requiresParams: boolean;
+};
+
+type CommandLogEntry = {
+  id: number;
+  command: string;
+  label: string;
+  success: boolean;
+  message: string;
+  simulated?: boolean;
+  timestamp: Date;
+  data?: any;
+};
+
+function MinerCommandPanel({ minerId, minerIp, minerSource }: { minerId: string; minerIp: string; minerSource: string }) {
+  const { toast } = useToast();
+  const [expanded, setExpanded] = useState(false);
+  const [commandLog, setCommandLog] = useState<CommandLogEntry[]>([]);
+  const [confirmDialog, setConfirmDialog] = useState<{ command: CommandDef; params?: any } | null>(null);
+  const [poolUrl, setPoolUrl] = useState("");
+  const [poolWorker, setPoolWorker] = useState("");
+  const [poolPassword, setPoolPassword] = useState("x");
+  const [powerPct, setPowerPct] = useState("100");
+  const [targetFreq, setTargetFreq] = useState("600");
+  const [apiPassword, setApiPassword] = useState("admin");
+  const [showPoolDialog, setShowPoolDialog] = useState(false);
+  const [showPowerDialog, setShowPowerDialog] = useState(false);
+  const [showFreqDialog, setShowFreqDialog] = useState(false);
+  const logCounter = useRef(0);
+
+  const { data: commands } = useQuery<CommandDef[]>({
+    queryKey: ["/api/miner-commands"],
+  });
+
+  const sendCommand = useMutation({
+    mutationFn: async ({ command, params }: { command: string; params?: any }) => {
+      const resp = await apiRequest("POST", `/api/miners/${minerId}/command`, {
+        command,
+        params,
+        apiPassword: apiPassword || undefined,
+      });
+      return resp.json();
+    },
+    onSuccess: (data, variables) => {
+      const cmd = commands?.find((c) => c.id === variables.command);
+      const entry: CommandLogEntry = {
+        id: ++logCounter.current,
+        command: variables.command,
+        label: cmd?.label || variables.command,
+        success: data.success,
+        message: data.message,
+        simulated: data.simulated,
+        timestamp: new Date(),
+        data: data.data,
+      };
+      setCommandLog((prev) => [entry, ...prev].slice(0, 50));
+
+      if (data.success) {
+        toast({ title: entry.label, description: data.message });
+      } else {
+        toast({ title: `${entry.label} failed`, description: data.message, variant: "destructive" });
+      }
+      setConfirmDialog(null);
+    },
+    onError: (err: Error) => {
+      toast({ title: "Command failed", description: err.message, variant: "destructive" });
+      setConfirmDialog(null);
+    },
+  });
+
+  const handleCommand = (cmd: CommandDef) => {
+    if (cmd.id === "update_pools") {
+      setShowPoolDialog(true);
+      return;
+    }
+    if (cmd.id === "set_power_pct") {
+      setShowPowerDialog(true);
+      return;
+    }
+    if (cmd.id === "set_target_freq") {
+      setShowFreqDialog(true);
+      return;
+    }
+    if (cmd.dangerous) {
+      setConfirmDialog({ command: cmd });
+      return;
+    }
+    sendCommand.mutate({ command: cmd.id });
+  };
+
+  const quickCommands = commands?.filter((c) => !c.requiresParams && !c.dangerous) || [];
+  const configCommands = commands?.filter((c) => c.requiresParams) || [];
+  const dangerCommands = commands?.filter((c) => c.dangerous) || [];
+
+  const cmdIcon = (id: string) => {
+    switch (id) {
+      case "restart": return <RotateCcw className="w-3.5 h-3.5" />;
+      case "power_off": return <PowerOff className="w-3.5 h-3.5" />;
+      case "set_power_pct": return <Zap className="w-3.5 h-3.5" />;
+      case "update_pools": return <Server className="w-3.5 h-3.5" />;
+      case "set_target_freq": return <Target className="w-3.5 h-3.5" />;
+      case "get_psu": return <Zap className="w-3.5 h-3.5" />;
+      case "get_version": return <Settings className="w-3.5 h-3.5" />;
+      case "summary": return <Cpu className="w-3.5 h-3.5" />;
+      default: return <Terminal className="w-3.5 h-3.5" />;
+    }
+  };
+
+  return (
+    <>
+      <Card>
+        <CardHeader className="pb-2">
+          <button
+            className="flex items-center justify-between w-full"
+            onClick={() => setExpanded(!expanded)}
+            data-testid="button-toggle-commands"
+          >
+            <CardTitle className="text-sm font-medium flex items-center gap-2">
+              <Terminal className="w-4 h-4" />
+              Miner Commands
+              {minerSource === "simulation" && (
+                <Badge variant="outline" className="text-[9px] ml-1 no-default-active-elevate">
+                  Simulated
+                </Badge>
+              )}
+            </CardTitle>
+            {expanded ? <ChevronUp className="w-4 h-4 text-muted-foreground" /> : <ChevronDown className="w-4 h-4 text-muted-foreground" />}
+          </button>
+        </CardHeader>
+        {expanded && (
+          <CardContent className="space-y-4">
+            <div className="flex items-end gap-2">
+              <div className="flex-1 max-w-[200px]">
+                <Label className="text-[10px] text-muted-foreground">API Password</Label>
+                <Input
+                  type="password"
+                  value={apiPassword}
+                  onChange={(e) => setApiPassword(e.target.value)}
+                  placeholder="admin"
+                  className="h-7 text-xs"
+                  data-testid="input-api-password"
+                />
+              </div>
+              <p className="text-[10px] text-muted-foreground pb-1.5">
+                Required for write commands on newer firmware
+              </p>
+            </div>
+
+            {quickCommands.length > 0 && (
+              <div>
+                <p className="text-[10px] text-muted-foreground uppercase tracking-wider mb-2">Quick Commands</p>
+                <div className="flex flex-wrap gap-2">
+                  {quickCommands.map((cmd) => (
+                    <Button
+                      key={cmd.id}
+                      variant="outline"
+                      size="sm"
+                      className="h-8 text-xs gap-1.5"
+                      onClick={() => handleCommand(cmd)}
+                      disabled={sendCommand.isPending}
+                      data-testid={`button-cmd-${cmd.id}`}
+                    >
+                      {sendCommand.isPending && sendCommand.variables?.command === cmd.id ? (
+                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      ) : cmdIcon(cmd.id)}
+                      {cmd.label}
+                    </Button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {configCommands.length > 0 && (
+              <div>
+                <p className="text-[10px] text-muted-foreground uppercase tracking-wider mb-2">Configuration</p>
+                <div className="flex flex-wrap gap-2">
+                  {configCommands.map((cmd) => (
+                    <Button
+                      key={cmd.id}
+                      variant="outline"
+                      size="sm"
+                      className="h-8 text-xs gap-1.5"
+                      onClick={() => handleCommand(cmd)}
+                      disabled={sendCommand.isPending}
+                      data-testid={`button-cmd-${cmd.id}`}
+                    >
+                      {cmdIcon(cmd.id)}
+                      {cmd.label}
+                    </Button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {dangerCommands.length > 0 && (
+              <div>
+                <p className="text-[10px] text-muted-foreground uppercase tracking-wider mb-2">Dangerous</p>
+                <div className="flex flex-wrap gap-2">
+                  {dangerCommands.map((cmd) => (
+                    <Button
+                      key={cmd.id}
+                      variant="outline"
+                      size="sm"
+                      className="h-8 text-xs gap-1.5 border-red-500/30 text-red-500 hover:bg-red-500/10 hover:text-red-400"
+                      onClick={() => handleCommand(cmd)}
+                      disabled={sendCommand.isPending}
+                      data-testid={`button-cmd-${cmd.id}`}
+                    >
+                      {sendCommand.isPending && sendCommand.variables?.command === cmd.id ? (
+                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      ) : cmdIcon(cmd.id)}
+                      {cmd.label}
+                    </Button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {commandLog.length > 0 && (
+              <div>
+                <p className="text-[10px] text-muted-foreground uppercase tracking-wider mb-2">Command Log</p>
+                <div className="space-y-1.5 max-h-[200px] overflow-y-auto">
+                  {commandLog.map((entry) => (
+                    <div
+                      key={entry.id}
+                      className="flex items-start gap-2 text-xs p-2 rounded bg-muted/30 border border-border/50"
+                      data-testid={`log-entry-${entry.id}`}
+                    >
+                      {entry.success ? (
+                        <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 mt-0.5 shrink-0" />
+                      ) : (
+                        <XCircle className="w-3.5 h-3.5 text-red-500 mt-0.5 shrink-0" />
+                      )}
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-1.5">
+                          <span className="font-medium">{entry.label}</span>
+                          {entry.simulated && (
+                            <Badge variant="outline" className="text-[8px] h-3.5 no-default-active-elevate">SIM</Badge>
+                          )}
+                        </div>
+                        <p className="text-muted-foreground truncate">{entry.message}</p>
+                      </div>
+                      <span className="text-[10px] text-muted-foreground shrink-0">
+                        {entry.timestamp.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </CardContent>
+        )}
+      </Card>
+
+      <Dialog open={!!confirmDialog} onOpenChange={() => setConfirmDialog(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <AlertTriangle className="w-5 h-5 text-amber-500" />
+              Confirm {confirmDialog?.command.label}
+            </DialogTitle>
+            <DialogDescription>
+              {confirmDialog?.command.description}. This will be sent to miner at {minerIp}.
+              Are you sure?
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setConfirmDialog(null)} data-testid="button-cancel-command">
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={() => confirmDialog && sendCommand.mutate({ command: confirmDialog.command.id, params: confirmDialog.params })}
+              disabled={sendCommand.isPending}
+              data-testid="button-confirm-command"
+            >
+              {sendCommand.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-1" /> : null}
+              Confirm
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={showPoolDialog} onOpenChange={setShowPoolDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Update Mining Pool</DialogTitle>
+            <DialogDescription>Set the pool URL, worker name, and password for this miner.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div>
+              <Label className="text-xs">Pool URL</Label>
+              <Input
+                value={poolUrl}
+                onChange={(e) => setPoolUrl(e.target.value)}
+                placeholder="stratum+tcp://pool.example.com:3333"
+                className="text-sm"
+                data-testid="input-pool-url"
+              />
+            </div>
+            <div>
+              <Label className="text-xs">Worker Name</Label>
+              <Input
+                value={poolWorker}
+                onChange={(e) => setPoolWorker(e.target.value)}
+                placeholder="account.worker1"
+                className="text-sm"
+                data-testid="input-pool-worker"
+              />
+            </div>
+            <div>
+              <Label className="text-xs">Pool Password</Label>
+              <Input
+                value={poolPassword}
+                onChange={(e) => setPoolPassword(e.target.value)}
+                placeholder="x"
+                className="text-sm"
+                data-testid="input-pool-password"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowPoolDialog(false)}>Cancel</Button>
+            <Button
+              onClick={() => {
+                sendCommand.mutate({
+                  command: "update_pools",
+                  params: { pool1: poolUrl, worker1: poolWorker, passwd1: poolPassword },
+                });
+                setShowPoolDialog(false);
+              }}
+              disabled={!poolUrl || !poolWorker || sendCommand.isPending}
+              data-testid="button-send-pool-update"
+            >
+              {sendCommand.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-1" /> : null}
+              Update Pool
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={showPowerDialog} onOpenChange={setShowPowerDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Set Power Mode</DialogTitle>
+            <DialogDescription>Set the power percentage for this miner. 100% is normal operation.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div>
+              <Label className="text-xs">Power Percentage</Label>
+              <Select value={powerPct} onValueChange={setPowerPct}>
+                <SelectTrigger data-testid="select-power-pct">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="20">20% — Ultra Low Power</SelectItem>
+                  <SelectItem value="40">40% — Low Power</SelectItem>
+                  <SelectItem value="60">60% — Eco Mode</SelectItem>
+                  <SelectItem value="80">80% — Balanced</SelectItem>
+                  <SelectItem value="100">100% — Normal</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowPowerDialog(false)}>Cancel</Button>
+            <Button
+              onClick={() => {
+                sendCommand.mutate({
+                  command: "set_power_pct",
+                  params: { percent: parseInt(powerPct) },
+                });
+                setShowPowerDialog(false);
+              }}
+              disabled={sendCommand.isPending}
+              data-testid="button-send-power-pct"
+            >
+              Set Power
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={showFreqDialog} onOpenChange={setShowFreqDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Set Target Frequency</DialogTitle>
+            <DialogDescription>Set the target mining frequency in MHz. Higher values increase hashrate but also power and heat.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div>
+              <Label className="text-xs">Target Frequency (MHz)</Label>
+              <Input
+                type="number"
+                value={targetFreq}
+                onChange={(e) => setTargetFreq(e.target.value)}
+                placeholder="600"
+                min={100}
+                max={1000}
+                className="text-sm"
+                data-testid="input-target-freq"
+              />
+              <p className="text-[10px] text-muted-foreground mt-1">Typical range: 400-800 MHz</p>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowFreqDialog(false)}>Cancel</Button>
+            <Button
+              onClick={() => {
+                sendCommand.mutate({
+                  command: "set_target_freq",
+                  params: { freq: parseInt(targetFreq) },
+                });
+                setShowFreqDialog(false);
+              }}
+              disabled={sendCommand.isPending}
+              data-testid="button-send-target-freq"
+            >
+              Set Frequency
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
+  );
+}
+

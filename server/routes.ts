@@ -4,6 +4,7 @@ import { storage } from "./storage";
 import { insertMinerSchema, insertAlertRuleSchema, insertScanConfigSchema, insertContainerSchema, type InsertMacLocationMapping } from "@shared/schema";
 import { z, ZodError } from "zod";
 import { scanIpRange, getScanProgress, scanIpRangeThrottled, getBulkScanProgress, isBulkScanning, initBulkScan, updateBulkProgress, completeBulkScan, generateIpRange } from "./scanner";
+import { sendMinerCommand, AVAILABLE_COMMANDS } from "./commands";
 import multer from "multer";
 
 
@@ -880,6 +881,60 @@ export async function registerRoutes(
     try {
       await storage.resetAllData();
       res.json({ success: true, message: "All data has been cleared" });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.get("/api/miner-commands", (_req, res) => {
+    res.json(AVAILABLE_COMMANDS);
+  });
+
+  app.post("/api/miners/:id/command", async (req, res) => {
+    try {
+      const miner = await storage.getMiner(req.params.id);
+      if (!miner) {
+        return res.status(404).json({ message: "Miner not found" });
+      }
+
+      const { command, params, apiPassword } = req.body;
+      if (!command || typeof command !== "string") {
+        return res.status(400).json({ message: "Missing command" });
+      }
+
+      const allowed = AVAILABLE_COMMANDS.find((c) => c.id === command);
+      if (!allowed) {
+        return res.status(400).json({ message: `Unknown command: ${command}` });
+      }
+
+      if (miner.source === "simulation") {
+        const simResponses: Record<string, any> = {
+          restart: { STATUS: [{ STATUS: "S", Msg: "Restarting..." }] },
+          power_off: { STATUS: [{ STATUS: "S", Msg: "Powering off..." }] },
+          summary: { STATUS: [{ STATUS: "S", Msg: "OK" }], SUMMARY: [{ "GHS av": 185000, Elapsed: 86400, Temperature: 65 }] },
+          get_version: { STATUS: [{ STATUS: "S", Msg: "OK" }], VERSION: [{ Type: "WhatsMiner M60S", CompileTime: "2024-01-15", API: "3.1" }] },
+          get_psu: { STATUS: [{ STATUS: "S", Msg: "OK" }], PSU: [{ Model: "P21D", FanSpeed: 5400, Vin: 220, Vout: 14.5 }] },
+          set_power_pct: { STATUS: [{ STATUS: "S", Msg: `Power set to ${params?.percent ?? 100}%` }] },
+          set_target_freq: { STATUS: [{ STATUS: "S", Msg: `Frequency set to ${params?.freq ?? 600} MHz` }] },
+          update_pools: { STATUS: [{ STATUS: "S", Msg: "Pool updated" }] },
+        };
+        return res.json({
+          success: true,
+          message: `[Simulated] ${allowed.label} — command acknowledged`,
+          data: simResponses[command] || { STATUS: [{ STATUS: "S", Msg: "OK" }] },
+          simulated: true,
+        });
+      }
+
+      const result = await sendMinerCommand(
+        miner.ipAddress,
+        miner.port,
+        command,
+        params || {},
+        apiPassword,
+      );
+
+      res.json(result);
     } catch (err: any) {
       res.status(500).json({ message: err.message });
     }

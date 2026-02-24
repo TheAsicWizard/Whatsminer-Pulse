@@ -169,7 +169,6 @@ export async function sendMinerCommand(
     if (needsAuth && apiPassword) {
       authResult = await getApiToken(host, port, apiPassword);
       if (authResult) {
-        token = authResult.token;
         log(`Auth token obtained successfully`, "commands");
       } else {
         log(`Auth token failed - command may be rejected`, "commands");
@@ -248,9 +247,11 @@ export async function sendMinerCommand(
       data: response,
     };
   } catch (err: any) {
+    log(`Command error: ${err.stack || err.message}`, "commands");
     return {
       success: false,
       message: err.message || "Failed to send command",
+      data: { error: err.message, stack: err.stack },
     };
   }
 }

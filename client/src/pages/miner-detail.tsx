@@ -409,6 +409,7 @@ function MinerCommandPanel({ minerId, minerIp, minerSource }: { minerId: string;
   const { toast } = useToast();
   const [expanded, setExpanded] = useState(false);
   const [commandLog, setCommandLog] = useState<CommandLogEntry[]>([]);
+  const [expandedLogId, setExpandedLogId] = useState<number | null>(null);
   const [confirmDialog, setConfirmDialog] = useState<{ command: CommandDef; params?: any } | null>(null);
   const [poolUrl, setPoolUrl] = useState("");
   const [poolWorker, setPoolWorker] = useState("");
@@ -612,32 +613,52 @@ function MinerCommandPanel({ minerId, minerIp, minerSource }: { minerId: string;
             {commandLog.length > 0 && (
               <div>
                 <p className="text-[10px] text-muted-foreground uppercase tracking-wider mb-2">Command Log</p>
-                <div className="space-y-1.5 max-h-[200px] overflow-y-auto">
-                  {commandLog.map((entry) => (
-                    <div
-                      key={entry.id}
-                      className="flex items-start gap-2 text-xs p-2 rounded bg-muted/30 border border-border/50"
-                      data-testid={`log-entry-${entry.id}`}
-                    >
-                      {entry.success ? (
-                        <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 mt-0.5 shrink-0" />
-                      ) : (
-                        <XCircle className="w-3.5 h-3.5 text-red-500 mt-0.5 shrink-0" />
-                      )}
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-1.5">
-                          <span className="font-medium">{entry.label}</span>
-                          {entry.simulated && (
-                            <Badge variant="outline" className="text-[8px] h-3.5 no-default-active-elevate">SIM</Badge>
+                <div className="space-y-1.5 max-h-[400px] overflow-y-auto">
+                  {commandLog.map((entry) => {
+                    const isExpanded = expandedLogId === entry.id;
+                    const hasData = entry.data && Object.keys(entry.data).length > 0;
+                    return (
+                      <div
+                        key={entry.id}
+                        className="text-xs rounded bg-muted/30 border border-border/50 overflow-hidden"
+                        data-testid={`log-entry-${entry.id}`}
+                      >
+                        <button
+                          className="flex items-start gap-2 p-2 w-full text-left hover:bg-muted/50 transition-colors"
+                          onClick={() => hasData && setExpandedLogId(isExpanded ? null : entry.id)}
+                          data-testid={`button-expand-log-${entry.id}`}
+                        >
+                          {entry.success ? (
+                            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 mt-0.5 shrink-0" />
+                          ) : (
+                            <XCircle className="w-3.5 h-3.5 text-red-500 mt-0.5 shrink-0" />
                           )}
-                        </div>
-                        <p className="text-muted-foreground truncate">{entry.message}</p>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-1.5">
+                              <span className="font-medium">{entry.label}</span>
+                              {entry.simulated && (
+                                <Badge variant="outline" className="text-[8px] h-3.5 no-default-active-elevate">SIM</Badge>
+                              )}
+                            </div>
+                            <p className="text-muted-foreground truncate">{entry.message}</p>
+                          </div>
+                          <div className="flex items-center gap-1.5 shrink-0">
+                            <span className="text-[10px] text-muted-foreground">
+                              {entry.timestamp.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
+                            </span>
+                            {hasData && (
+                              isExpanded ? <ChevronUp className="w-3 h-3 text-muted-foreground" /> : <ChevronDown className="w-3 h-3 text-muted-foreground" />
+                            )}
+                          </div>
+                        </button>
+                        {isExpanded && hasData && (
+                          <div className="px-3 pb-2 border-t border-border/30">
+                            <CommandResponseData data={entry.data} command={entry.command} />
+                          </div>
+                        )}
                       </div>
-                      <span className="text-[10px] text-muted-foreground shrink-0">
-                        {entry.timestamp.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
-                      </span>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </div>
             )}
@@ -815,6 +836,96 @@ function MinerCommandPanel({ minerId, minerIp, minerSource }: { minerId: string;
         </DialogContent>
       </Dialog>
     </>
+  );
+}
+
+function formatResponseValue(value: any): string {
+  if (value === null || value === undefined) return "—";
+  if (typeof value === "number") {
+    if (value > 1000000) return `${(value / 1000000).toFixed(2)}M`;
+    if (value > 1000) return value.toLocaleString();
+    return String(value);
+  }
+  return String(value);
+}
+
+function CommandResponseData({ data, command }: { data: any; command: string }) {
+  const summaryKeys: Record<string, string> = {
+    "GHS av": "Hashrate (GH/s)",
+    "GHS 5s": "Hashrate 5s (GH/s)",
+    "MHS av": "Hashrate (MH/s)",
+    Temperature: "Temperature (°C)",
+    Elapsed: "Uptime (s)",
+    "Factory GHS": "Factory GH/s",
+    "Power": "Power (W)",
+    "Power Limit": "Power Limit (W)",
+    Accepted: "Accepted Shares",
+    Rejected: "Rejected Shares",
+    "Fan Speed In": "Fan In (RPM)",
+    "Fan Speed Out": "Fan Out (RPM)",
+    "Pool Rejected%": "Pool Reject %",
+    "Pool Stale%": "Pool Stale %",
+    "Freq avg": "Avg Frequency (MHz)",
+    "Power Mode": "Power Mode",
+  };
+
+  const psuKeys: Record<string, string> = {
+    Model: "PSU Model",
+    FanSpeed: "Fan Speed (RPM)",
+    Vin: "Input Voltage (V)",
+    Vout: "Output Voltage (V)",
+    Iin: "Input Current (A)",
+    Iout: "Output Current (A)",
+    Pin: "Input Power (W)",
+    Pout: "Output Power (W)",
+    "PSU Temp": "PSU Temperature (°C)",
+  };
+
+  const versionKeys: Record<string, string> = {
+    Type: "Miner Type",
+    CompileTime: "Firmware Date",
+    API: "API Version",
+    Miner: "Miner Version",
+    "Firmware Version": "Firmware Version",
+  };
+
+  let keyMap: Record<string, string> | null = null;
+  let section: any = data;
+
+  if (command === "summary" && data.SUMMARY) {
+    keyMap = summaryKeys;
+    section = Array.isArray(data.SUMMARY) ? data.SUMMARY[0] : data.SUMMARY;
+  } else if (command === "get_psu" && data.PSU) {
+    keyMap = psuKeys;
+    section = Array.isArray(data.PSU) ? data.PSU[0] : data.PSU;
+  } else if (command === "get_version" && data.VERSION) {
+    keyMap = versionKeys;
+    section = Array.isArray(data.VERSION) ? data.VERSION[0] : data.VERSION;
+  }
+
+  if (keyMap && section && typeof section === "object") {
+    const entries = Object.entries(section)
+      .filter(([k]) => k in keyMap!)
+      .map(([k, v]) => ({ label: keyMap![k], value: v }));
+
+    if (entries.length > 0) {
+      return (
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-x-4 gap-y-1 pt-2">
+          {entries.map(({ label, value }) => (
+            <div key={label} className="flex flex-col">
+              <span className="text-[9px] text-muted-foreground uppercase tracking-wider">{label}</span>
+              <span className="font-mono font-medium text-xs">{formatResponseValue(value)}</span>
+            </div>
+          ))}
+        </div>
+      );
+    }
+  }
+
+  return (
+    <pre className="pt-2 text-[10px] font-mono text-muted-foreground whitespace-pre-wrap break-all max-h-[200px] overflow-y-auto">
+      {JSON.stringify(data, null, 2)}
+    </pre>
   );
 }
 

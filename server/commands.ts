@@ -186,10 +186,17 @@ export async function sendMinerCommand(
 
     let response: any;
 
-    const payload: Record<string, any> = { cmd: apiCmd, ...params };
+    const payload: Record<string, any> = { command: apiCmd, ...params };
     log(`Sending plain command: ${JSON.stringify(payload)}`, "commands");
-    response = await sendTcpCommand(host, port, payload);
-    log(`Plain response: ${JSON.stringify(response).substring(0, 500)}`, "commands");
+    try {
+      response = await sendTcpCommand(host, port, payload);
+      log(`Plain response: ${JSON.stringify(response).substring(0, 500)}`, "commands");
+    } catch (plainErr: any) {
+      log(`Plain command failed (${plainErr.message}), trying 'cmd' key format...`, "commands");
+      const payload2: Record<string, any> = { cmd: apiCmd, ...params };
+      response = await sendTcpCommand(host, port, payload2);
+      log(`cmd-key response: ${JSON.stringify(response).substring(0, 500)}`, "commands");
+    }
 
     const plainStatus = response?.STATUS;
     const plainIsError = plainStatus === "E" || (Array.isArray(plainStatus) && plainStatus[0]?.STATUS === "E");

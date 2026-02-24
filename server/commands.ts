@@ -50,7 +50,12 @@ function sendTcpCommand(host: string, port: number, payload: object): Promise<an
   });
 }
 
-async function getApiToken(host: string, port: number, password: string): Promise<string | null> {
+interface AuthResult {
+  token: string;
+  newsalt: string;
+}
+
+async function getApiToken(host: string, port: number, password: string): Promise<AuthResult | null> {
   try {
     const tokenResp = await sendTcpCommand(host, port, { cmd: "get_token" });
     log(`get_token response: ${JSON.stringify(tokenResp).substring(0, 500)}`, "commands");
@@ -62,7 +67,7 @@ async function getApiToken(host: string, port: number, password: string): Promis
     }
 
     const salt = tokenData.salt || tokenData.Salt;
-    const newsalt = tokenData.newsalt || tokenData.Newsalt || tokenData.newSalt;
+    const newsalt = tokenData.newsalt || tokenData.Newsalt || tokenData.newSalt || salt;
     const time = tokenData.time || tokenData.Time;
     if (!salt) {
       log(`get_token: no salt found in token data`, "commands");
@@ -70,30 +75,48 @@ async function getApiToken(host: string, port: number, password: string): Promis
     }
 
     const secret = crypto.createHash("md5").update(password + salt).digest("hex");
-    log(`Computed token hash, setting token...`, "commands");
+    log(`Computed token hash from salt, setting token...`, "commands");
 
     const setPayload: Record<string, any> = {
       cmd: "set_token",
       token: secret,
-      newsalt: newsalt || salt,
+      newsalt: newsalt,
     };
     if (time) setPayload.time = time;
 
     const setResp = await sendTcpCommand(host, port, setPayload);
     log(`set_token response: ${JSON.stringify(setResp).substring(0, 500)}`, "commands");
 
-    const setData = setResp?.Msg || setResp?.msg;
-    if (setData && typeof setData === "object" && setData.token) return setData.token;
-    if (typeof setResp?.token === "string") return setResp.token;
-
-    const setStatus = setResp?.STATUS?.[0] || setResp?.status?.[0];
-    if (setStatus?.STATUS === "S" || setStatus?.status === "S") {
-      return secret;
-    }
-
-    return secret;
+    return { token: secret, newsalt };
   } catch (err: any) {
     log(`getApiToken error: ${err.message}`, "commands");
+    return null;
+  }
+}
+
+function encryptCommand(cmdData: string, token: string): string {
+  const key = token.substring(0, 16);
+  const iv = crypto.randomBytes(16);
+  const cipher = crypto.createCipheriv("aes-128-cbc", Buffer.from(key, "utf8"), iv);
+  let encrypted = cipher.update(cmdData, "utf8");
+  encrypted = Buffer.concat([encrypted, cipher.final()]);
+  const combined = Buffer.concat([iv, encrypted]);
+  return combined.toString("base64");
+}
+
+function decryptResponse(encData: string, token: string): any {
+  try {
+    const key = token.substring(0, 16);
+    const buf = Buffer.from(encData, "base64");
+    const iv = buf.subarray(0, 16);
+    const encrypted = buf.subarray(16);
+    const decipher = crypto.createDecipheriv("aes-128-cbc", Buffer.from(key, "utf8"), iv);
+    let decrypted = decipher.update(encrypted);
+    decrypted = Buffer.concat([decrypted, decipher.final()]);
+    const text = decrypted.toString("utf8").replace(/\0+$/, "");
+    return JSON.parse(text);
+  } catch (err: any) {
+    log(`decrypt failed: ${err.message}`, "commands");
     return null;
   }
 }
@@ -130,11 +153,12 @@ export async function sendMinerCommand(
     ];
 
     const needsAuth = writeCommands.includes(apiCmd);
+    let authResult: AuthResult | null = null;
 
     if (needsAuth && apiPassword) {
-      const t = await getApiToken(host, port, apiPassword);
-      if (t) {
-        token = t;
+      authResult = await getApiToken(host, port, apiPassword);
+      if (authResult) {
+        token = authResult.token;
         log(`Auth token obtained successfully`, "commands");
       } else {
         log(`Auth token failed - command may be rejected`, "commands");
@@ -143,13 +167,36 @@ export async function sendMinerCommand(
       log(`Write command '${apiCmd}' requires auth but no API password provided`, "commands");
     }
 
-    const payload: Record<string, any> = { cmd: apiCmd };
-    if (token) payload.token = token;
-    Object.assign(payload, params);
+    let response: any;
 
-    log(`Sending payload: ${JSON.stringify({ ...payload, token: token ? `[${token.substring(0,8)}...]` : "[none]" })}`, "commands");
-    const response = await sendTcpCommand(host, port, payload);
-    log(`Command response: ${JSON.stringify(response).substring(0, 500)}`, "commands");
+    if (needsAuth && authResult) {
+      const cmdData = JSON.stringify({ cmd: apiCmd, ...params });
+      const enc = encryptCommand(cmdData, authResult.token);
+      const encPayload = { enc: 1, data: enc };
+      log(`Sending encrypted payload for '${apiCmd}'`, "commands");
+      const rawResp = await sendTcpCommand(host, port, encPayload);
+      log(`Encrypted response: ${JSON.stringify(rawResp).substring(0, 500)}`, "commands");
+
+      if (rawResp?.enc && rawResp?.data) {
+        const decrypted = decryptResponse(rawResp.data, authResult.token);
+        if (decrypted) {
+          log(`Decrypted response: ${JSON.stringify(decrypted).substring(0, 500)}`, "commands");
+          response = decrypted;
+        } else {
+          response = rawResp;
+        }
+      } else {
+        response = rawResp;
+      }
+    } else {
+      const payload: Record<string, any> = { cmd: apiCmd };
+      if (token) payload.token = token;
+      Object.assign(payload, params);
+
+      log(`Sending payload: ${JSON.stringify({ ...payload, token: token ? `[set]` : "[none]" })}`, "commands");
+      response = await sendTcpCommand(host, port, payload);
+      log(`Command response: ${JSON.stringify(response).substring(0, 500)}`, "commands");
+    }
 
     const statusArr = response?.STATUS;
     const status = Array.isArray(statusArr) ? statusArr[0] : (typeof statusArr === "string" ? { STATUS: statusArr } : null);

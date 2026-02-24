@@ -449,6 +449,10 @@ function MinerCommandPanel({ minerId, minerIp, minerSource }: { minerId: string;
       };
       setCommandLog((prev) => [entry, ...prev].slice(0, 50));
 
+      if (!data.success && entry.data) {
+        setExpandedLogId(entry.id);
+      }
+
       if (data.success) {
         toast({ title: entry.label, description: data.message });
       } else {

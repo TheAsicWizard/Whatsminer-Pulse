@@ -145,9 +145,16 @@ export async function sendMinerCommand(
     log(`Command response: ${JSON.stringify(response).substring(0, 500)}`, "commands");
 
     const status = response?.STATUS?.[0] || response?.status?.[0];
-    const msg = status?.Msg || status?.msg || response?.Msg?.msg || "";
+    const msgRaw = status?.Msg || status?.msg || "";
+    const msgFromObj = typeof response?.Msg === "string" ? response.Msg
+      : typeof response?.Msg === "object" ? (response.Msg.msg || response.Msg.Msg || "") : "";
+    const msg = msgRaw || msgFromObj;
 
-    if (status?.STATUS === "E" || status?.status === "E") {
+    const isError = status?.STATUS === "E" || status?.status === "E";
+    const msgLower = msg.toLowerCase();
+    const isInvalidMsg = msgLower.includes("invalid") || msgLower.includes("error") || msgLower.includes("failed") || msgLower.includes("denied");
+
+    if (isError || isInvalidMsg) {
       return {
         success: false,
         message: msg || `Command '${command}' failed`,

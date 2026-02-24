@@ -133,31 +133,46 @@ export async function sendMinerCommand(
 
     if (needsAuth && apiPassword) {
       const t = await getApiToken(host, port, apiPassword);
-      if (t) token = t;
+      if (t) {
+        token = t;
+        log(`Auth token obtained successfully`, "commands");
+      } else {
+        log(`Auth token failed - command may be rejected`, "commands");
+      }
+    } else if (needsAuth && !apiPassword) {
+      log(`Write command '${apiCmd}' requires auth but no API password provided`, "commands");
     }
 
     const payload: Record<string, any> = { cmd: apiCmd };
     if (token) payload.token = token;
     Object.assign(payload, params);
 
-    log(`Sending payload: ${JSON.stringify({ ...payload, token: token ? "[set]" : "[none]" })}`, "commands");
+    log(`Sending payload: ${JSON.stringify({ ...payload, token: token ? `[${token.substring(0,8)}...]` : "[none]" })}`, "commands");
     const response = await sendTcpCommand(host, port, payload);
     log(`Command response: ${JSON.stringify(response).substring(0, 500)}`, "commands");
 
-    const status = response?.STATUS?.[0] || response?.status?.[0];
-    const msgRaw = status?.Msg || status?.msg || "";
+    const statusArr = response?.STATUS;
+    const status = Array.isArray(statusArr) ? statusArr[0] : (typeof statusArr === "string" ? { STATUS: statusArr } : null);
+    const statusArrLc = response?.status;
+    const statusLc = Array.isArray(statusArrLc) ? statusArrLc[0] : (typeof statusArrLc === "string" ? { status: statusArrLc } : null);
+    const st = status || statusLc;
+
+    const msgRaw = st?.Msg || st?.msg || "";
     const msgFromObj = typeof response?.Msg === "string" ? response.Msg
       : typeof response?.Msg === "object" ? (response.Msg.msg || response.Msg.Msg || "") : "";
     const msg = msgRaw || msgFromObj;
 
-    const isError = status?.STATUS === "E" || status?.status === "E";
+    const isError = st?.STATUS === "E" || st?.status === "E" || response?.STATUS === "E";
     const msgLower = msg.toLowerCase();
     const isInvalidMsg = msgLower.includes("invalid") || msgLower.includes("error") || msgLower.includes("failed") || msgLower.includes("denied");
 
     if (isError || isInvalidMsg) {
+      const authInfo = needsAuth
+        ? (token ? `(auth: token obtained)` : apiPassword ? `(auth: token failed)` : `(auth: no password provided)`)
+        : `(no auth needed)`;
       return {
         success: false,
-        message: msg || `Command '${command}' failed`,
+        message: `${msg || `Command '${command}' failed`} ${authInfo}`,
         data: response,
       };
     }

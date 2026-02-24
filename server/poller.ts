@@ -7,7 +7,15 @@ import { log } from "./index";
 const POLL_BATCH_SIZE = 30;
 let isPolling = false;
 
+const commandLocks = new Set<string>();
+export function lockMinerForCommand(ip: string) { commandLocks.add(ip); }
+export function unlockMinerForCommand(ip: string) { commandLocks.delete(ip); }
+
 async function processMiner(miner: any, rules: any[]) {
+  if (commandLocks.has(miner.ipAddress)) {
+    log(`Skipping ${miner.ipAddress} — command in progress`, "poller");
+    return;
+  }
   try {
     const data = await pollRealMiner(miner.ipAddress, miner.port);
 

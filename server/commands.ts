@@ -3,6 +3,7 @@ import * as crypto from "crypto";
 import md5crypt_ from "apache-md5";
 const md5crypt = md5crypt_ as unknown as (password: string, salt: string) => string;
 import { log } from "./index";
+import { lockMinerForCommand, unlockMinerForCommand } from "./poller";
 
 const CMD_TIMEOUT = 10000;
 
@@ -154,6 +155,7 @@ export async function sendMinerCommand(
   const apiCmd = API_CMD_MAP[command] || command;
   log(`Sending command '${apiCmd}' (${command}) to ${host}:${port} [timeout=${CMD_TIMEOUT}ms]`, "commands");
 
+  lockMinerForCommand(host);
   try {
     const writeCommands = [
       "restart_btminer", "reboot", "power_off",
@@ -253,6 +255,8 @@ export async function sendMinerCommand(
       message: err.message || "Failed to send command",
       data: { error: err.message, stack: err.stack },
     };
+  } finally {
+    unlockMinerForCommand(host);
   }
 }
 

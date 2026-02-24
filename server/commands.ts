@@ -60,26 +60,39 @@ async function getApiToken(host: string, port: number, password: string): Promis
     const tokenResp = await sendTcpCommand(host, port, { cmd: "get_token" });
     log(`get_token response: ${JSON.stringify(tokenResp).substring(0, 500)}`, "commands");
 
-    const tokenData = tokenResp?.Msg || tokenResp?.msg;
-    if (!tokenData || typeof tokenData !== "object") {
-      log(`get_token: no Msg object in response`, "commands");
-      return null;
+    let salt: string | undefined;
+    let newsalt: string | undefined;
+    let time: number | undefined;
+
+    const statusArr = tokenResp?.STATUS;
+    if (Array.isArray(statusArr) && statusArr[0]) {
+      const s = statusArr[0];
+      salt = s.salt || s.Salt;
+      newsalt = s.newsalt || s.Newsalt || s.newSalt;
+      time = s.time || s.Time;
     }
 
-    const salt = tokenData.salt || tokenData.Salt;
-    const newsalt = tokenData.newsalt || tokenData.Newsalt || tokenData.newSalt || salt;
-    const time = tokenData.time || tokenData.Time;
+    const msgData = tokenResp?.Msg || tokenResp?.msg;
+    if (!salt && msgData && typeof msgData === "object") {
+      salt = msgData.salt || msgData.Salt;
+      newsalt = msgData.newsalt || msgData.Newsalt || msgData.newSalt;
+      time = msgData.time || msgData.Time;
+    }
+
     if (!salt) {
-      log(`get_token: no salt found in token data`, "commands");
+      log(`get_token: no salt found. Full response: ${JSON.stringify(tokenResp)}`, "commands");
       return null;
     }
+    newsalt = newsalt || salt;
 
-    const secret = crypto.createHash("md5").update(password + salt).digest("hex");
-    log(`Computed token hash from salt, setting token...`, "commands");
+    const pwdHash = crypto.createHash("md5").update(password).digest("hex");
+    const tokenHash = crypto.createHash("md5").update(pwdHash + salt).digest("hex");
+    const fullToken = tokenHash + newsalt;
+    log(`Token computed: MD5(MD5(pwd) + salt) + newsalt, length=${fullToken.length}`, "commands");
 
     const setPayload: Record<string, any> = {
       cmd: "set_token",
-      token: secret,
+      token: tokenHash,
       newsalt: newsalt,
     };
     if (time) setPayload.time = time;
@@ -87,7 +100,7 @@ async function getApiToken(host: string, port: number, password: string): Promis
     const setResp = await sendTcpCommand(host, port, setPayload);
     log(`set_token response: ${JSON.stringify(setResp).substring(0, 500)}`, "commands");
 
-    return { token: secret, newsalt };
+    return { token: fullToken, newsalt };
   } catch (err: any) {
     log(`getApiToken error: ${err.message}`, "commands");
     return null;
@@ -95,27 +108,29 @@ async function getApiToken(host: string, port: number, password: string): Promis
 }
 
 function getAesKey(token: string): Buffer {
-  return Buffer.from(token, "hex");
+  return crypto.createHash("md5").update(token).digest();
 }
 
 function encryptCommand(cmdData: string, token: string): string {
   const key = getAesKey(token);
-  const iv = Buffer.alloc(16, 0);
+  const iv = crypto.randomBytes(16);
   const cipher = crypto.createCipheriv("aes-128-cbc", key, iv);
   cipher.setAutoPadding(true);
   let encrypted = cipher.update(cmdData, "utf8");
   encrypted = Buffer.concat([encrypted, cipher.final()]);
-  return encrypted.toString("base64");
+  const combined = Buffer.concat([iv, encrypted]);
+  return combined.toString("base64");
 }
 
 function decryptResponse(encData: string, token: string): any {
   try {
     const key = getAesKey(token);
-    const iv = Buffer.alloc(16, 0);
     const buf = Buffer.from(encData, "base64");
+    const iv = buf.subarray(0, 16);
+    const encrypted = buf.subarray(16);
     const decipher = crypto.createDecipheriv("aes-128-cbc", key, iv);
     decipher.setAutoPadding(true);
-    let decrypted = decipher.update(buf);
+    let decrypted = decipher.update(encrypted);
     decrypted = Buffer.concat([decrypted, decipher.final()]);
     const text = decrypted.toString("utf8").replace(/\0+$/, "");
     return JSON.parse(text);

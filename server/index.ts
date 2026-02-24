@@ -69,7 +69,6 @@ app.use((req, res, next) => {
     const { execSync } = await import("child_process");
     execSync("npx drizzle-kit push --force", { stdio: "inherit" });
     await seedDatabase();
-    startRealPoller();
   } catch (err) {
     console.error("Database setup error:", err);
   }
@@ -112,6 +111,7 @@ app.use((req, res, next) => {
     },
     () => {
       log(`serving on port ${port}`);
+      startRealPoller();
     },
   );
 })();

@@ -78,6 +78,17 @@ async function getApiToken(host: string, port: number, password: string): Promis
   }
 }
 
+const API_CMD_MAP: Record<string, string> = {
+  restart: "restart_btminer",
+  power_off: "power_off",
+  set_power_pct: "set_power_pct",
+  update_pools: "update_pools",
+  set_target_freq: "set_target_freq",
+  get_psu: "get_psu",
+  get_version: "get_version",
+  summary: "summary",
+};
+
 export async function sendMinerCommand(
   host: string,
   port: number,
@@ -85,26 +96,27 @@ export async function sendMinerCommand(
   params: Record<string, any> = {},
   apiPassword?: string,
 ): Promise<CommandResult> {
-  log(`Sending command '${command}' to ${host}:${port}`, "commands");
+  const apiCmd = API_CMD_MAP[command] || command;
+  log(`Sending command '${apiCmd}' (${command}) to ${host}:${port}`, "commands");
 
   try {
     let token: string | undefined;
     const writeCommands = [
-      "restart", "reboot", "power_off",
+      "restart_btminer", "reboot", "power_off",
       "set_target_freq", "set_power_pct",
       "update_pools", "set_pools",
       "enable_btminer", "disable_btminer",
       "factory_reset",
     ];
 
-    const needsAuth = writeCommands.includes(command);
+    const needsAuth = writeCommands.includes(apiCmd);
 
     if (needsAuth && apiPassword) {
       const t = await getApiToken(host, port, apiPassword);
       if (t) token = t;
     }
 
-    const payload: Record<string, any> = { cmd: command };
+    const payload: Record<string, any> = { cmd: apiCmd };
     if (token) payload.token = token;
     Object.assign(payload, params);
 

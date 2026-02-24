@@ -871,46 +871,87 @@ function CommandResponseData({ data, command }: { data: any; command: string }) 
 
   const psuKeys: Record<string, string> = {
     Model: "PSU Model",
+    model: "PSU Model",
+    name: "PSU Model",
     FanSpeed: "Fan Speed (RPM)",
+    fan_speed: "Fan Speed (RPM)",
     Vin: "Input Voltage (V)",
+    vin: "Input Voltage (V)",
     Vout: "Output Voltage (V)",
+    vout: "Output Voltage (V)",
     Iin: "Input Current (A)",
+    iin: "Input Current (A)",
     Iout: "Output Current (A)",
+    iout: "Output Current (A)",
     Pin: "Input Power (W)",
+    pin: "Input Power (W)",
     Pout: "Output Power (W)",
+    pout: "Output Power (W)",
     "PSU Temp": "PSU Temperature (°C)",
+    temp: "PSU Temperature (°C)",
+    temp0: "Temp 0 (°C)",
+    temp1: "Temp 1 (°C)",
+    sernum: "Serial Number",
+    hw_version: "HW Version",
+    sw_version: "SW Version",
   };
 
   const versionKeys: Record<string, string> = {
     Type: "Miner Type",
+    type: "Miner Type",
     CompileTime: "Firmware Date",
+    compiletime: "Firmware Date",
     API: "API Version",
+    api: "API Version",
     Miner: "Miner Version",
+    miner: "Miner Version",
     "Firmware Version": "Firmware Version",
+    fw_ver: "Firmware Version",
+    "CGMiner": "CGMiner Version",
   };
 
-  let keyMap: Record<string, string> | null = null;
-  let section: any = data;
-
-  if (command === "summary" && data.SUMMARY) {
-    keyMap = summaryKeys;
-    section = Array.isArray(data.SUMMARY) ? data.SUMMARY[0] : data.SUMMARY;
-  } else if (command === "get_psu" && data.PSU) {
-    keyMap = psuKeys;
-    section = Array.isArray(data.PSU) ? data.PSU[0] : data.PSU;
-  } else if (command === "get_version" && data.VERSION) {
-    keyMap = versionKeys;
-    section = Array.isArray(data.VERSION) ? data.VERSION[0] : data.VERSION;
+  function findSection(d: any): { keyMap: Record<string, string>; section: any } | null {
+    if (command === "summary") {
+      const s = d.SUMMARY || d.summary;
+      if (s) return { keyMap: summaryKeys, section: Array.isArray(s) ? s[0] : s };
+      if (d.Msg && typeof d.Msg === "object" && !Array.isArray(d.Msg)) {
+        const hasKeys = Object.keys(d.Msg).some(k => k in summaryKeys || k.toLowerCase() in summaryKeys);
+        if (hasKeys) return { keyMap: summaryKeys, section: d.Msg };
+      }
+    }
+    if (command === "get_psu") {
+      const p = d.PSU || d.psu;
+      if (p) return { keyMap: psuKeys, section: Array.isArray(p) ? p[0] : p };
+      if (d.Msg && typeof d.Msg === "object" && !Array.isArray(d.Msg)) {
+        return { keyMap: psuKeys, section: d.Msg };
+      }
+    }
+    if (command === "get_version") {
+      const v = d.VERSION || d.version;
+      if (v) return { keyMap: versionKeys, section: Array.isArray(v) ? v[0] : v };
+      if (d.Msg && typeof d.Msg === "object" && !Array.isArray(d.Msg)) {
+        return { keyMap: versionKeys, section: d.Msg };
+      }
+    }
+    return null;
   }
 
-  if (keyMap && section && typeof section === "object") {
-    const entries = Object.entries(section)
-      .filter(([k]) => k in keyMap!)
-      .map(([k, v]) => ({ label: keyMap![k], value: v }));
+  const found = findSection(data);
+
+  if (found && found.section && typeof found.section === "object") {
+    const seen = new Set<string>();
+    const entries = Object.entries(found.section)
+      .filter(([k]) => {
+        const label = found.keyMap[k];
+        if (!label || seen.has(label)) return false;
+        seen.add(label);
+        return true;
+      })
+      .map(([k, v]) => ({ label: found.keyMap[k], value: v }));
 
     if (entries.length > 0) {
       return (
-        <div className="grid grid-cols-2 sm:grid-cols-3 gap-x-4 gap-y-1 pt-2">
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-x-4 gap-y-1 pt-2" data-testid="response-data-grid">
           {entries.map(({ label, value }) => (
             <div key={label} className="flex flex-col">
               <span className="text-[9px] text-muted-foreground uppercase tracking-wider">{label}</span>
@@ -922,10 +963,43 @@ function CommandResponseData({ data, command }: { data: any; command: string }) 
     }
   }
 
+  if (typeof data === "object" && data !== null) {
+    const flat = flattenForDisplay(data);
+    if (flat.length > 0) {
+      return (
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-x-4 gap-y-1 pt-2" data-testid="response-data-flat">
+          {flat.map(({ key, value }) => (
+            <div key={key} className="flex flex-col">
+              <span className="text-[9px] text-muted-foreground uppercase tracking-wider">{key}</span>
+              <span className="font-mono font-medium text-xs">{formatResponseValue(value)}</span>
+            </div>
+          ))}
+        </div>
+      );
+    }
+  }
+
   return (
-    <pre className="pt-2 text-[10px] font-mono text-muted-foreground whitespace-pre-wrap break-all max-h-[200px] overflow-y-auto">
+    <pre className="pt-2 text-[10px] font-mono text-muted-foreground whitespace-pre-wrap break-all max-h-[200px] overflow-y-auto" data-testid="response-data-raw">
       {JSON.stringify(data, null, 2)}
     </pre>
   );
+}
+
+function flattenForDisplay(obj: any, prefix = ""): { key: string; value: any }[] {
+  const result: { key: string; value: any }[] = [];
+  const skip = new Set(["STATUS", "status", "id", "Id", "ID", "When", "Code", "Description"]);
+  for (const [k, v] of Object.entries(obj)) {
+    if (skip.has(k)) continue;
+    const label = prefix ? `${prefix}.${k}` : k;
+    if (v && typeof v === "object" && !Array.isArray(v)) {
+      result.push(...flattenForDisplay(v, label));
+    } else if (Array.isArray(v) && v.length === 1 && typeof v[0] === "object") {
+      result.push(...flattenForDisplay(v[0], label));
+    } else {
+      result.push({ key: label, value: v });
+    }
+  }
+  return result;
 }
 

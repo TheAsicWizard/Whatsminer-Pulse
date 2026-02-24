@@ -96,22 +96,22 @@ async function getApiToken(host: string, port: number, password: string): Promis
 
 function encryptCommand(cmdData: string, token: string): string {
   const key = token.substring(0, 16);
-  const iv = crypto.randomBytes(16);
+  const iv = Buffer.alloc(16, 0);
   const cipher = crypto.createCipheriv("aes-128-cbc", Buffer.from(key, "utf8"), iv);
+  cipher.setAutoPadding(true);
   let encrypted = cipher.update(cmdData, "utf8");
   encrypted = Buffer.concat([encrypted, cipher.final()]);
-  const combined = Buffer.concat([iv, encrypted]);
-  return combined.toString("base64");
+  return encrypted.toString("base64");
 }
 
 function decryptResponse(encData: string, token: string): any {
   try {
     const key = token.substring(0, 16);
+    const iv = Buffer.alloc(16, 0);
     const buf = Buffer.from(encData, "base64");
-    const iv = buf.subarray(0, 16);
-    const encrypted = buf.subarray(16);
     const decipher = crypto.createDecipheriv("aes-128-cbc", Buffer.from(key, "utf8"), iv);
-    let decrypted = decipher.update(encrypted);
+    decipher.setAutoPadding(true);
+    let decrypted = decipher.update(buf);
     decrypted = Buffer.concat([decrypted, decipher.final()]);
     const text = decrypted.toString("utf8").replace(/\0+$/, "");
     return JSON.parse(text);

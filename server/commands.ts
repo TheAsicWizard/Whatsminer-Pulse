@@ -1,5 +1,7 @@
 import * as net from "net";
 import * as crypto from "crypto";
+import md5crypt_ from "apache-md5";
+const md5crypt = md5crypt_ as unknown as (password: string, salt: string) => string;
 import { log } from "./index";
 
 const CMD_TIMEOUT = 5000;
@@ -51,8 +53,8 @@ function sendTcpCommand(host: string, port: number, payload: object): Promise<an
 }
 
 interface AuthResult {
-  token: string;
-  newsalt: string;
+  sign: string;
+  aesKey: Buffer;
 }
 
 async function getApiToken(host: string, port: number, password: string): Promise<AuthResult | null> {
@@ -60,79 +62,70 @@ async function getApiToken(host: string, port: number, password: string): Promis
     const tokenResp = await sendTcpCommand(host, port, { cmd: "get_token" });
     log(`get_token response: ${JSON.stringify(tokenResp).substring(0, 500)}`, "commands");
 
-    let salt: string | undefined;
-    let newsalt: string | undefined;
-    let time: number | undefined;
-
-    const statusArr = tokenResp?.STATUS;
-    if (Array.isArray(statusArr) && statusArr[0]) {
-      const s = statusArr[0];
-      salt = s.salt || s.Salt;
-      newsalt = s.newsalt || s.Newsalt || s.newSalt;
-      time = s.time || s.Time;
-    }
-
     const msgData = tokenResp?.Msg || tokenResp?.msg;
-    if (!salt && msgData && typeof msgData === "object") {
-      salt = msgData.salt || msgData.Salt;
-      newsalt = msgData.newsalt || msgData.Newsalt || msgData.newSalt;
-      time = msgData.time || msgData.Time;
-    }
-
-    if (!salt) {
-      log(`get_token: no salt found. Full response: ${JSON.stringify(tokenResp)}`, "commands");
+    if (!msgData || typeof msgData !== "object") {
+      if (msgData === "over max connect") {
+        log(`get_token: over max connect - too many connections`, "commands");
+      } else {
+        log(`get_token: no Msg object. Full: ${JSON.stringify(tokenResp)}`, "commands");
+      }
       return null;
     }
-    newsalt = newsalt || salt;
 
-    const pwdHash = crypto.createHash("md5").update(password).digest("hex");
-    const tokenHash = crypto.createHash("md5").update(pwdHash + salt).digest("hex");
-    const fullToken = tokenHash + newsalt;
-    log(`Token computed: MD5(MD5(pwd) + salt) + newsalt, length=${fullToken.length}`, "commands");
+    const salt = msgData.salt || msgData.Salt;
+    const newsalt = msgData.newsalt || msgData.Newsalt || msgData.newSalt;
+    const time = msgData.time || msgData.Time;
 
-    const setPayload: Record<string, any> = {
-      cmd: "set_token",
-      token: tokenHash,
-      newsalt: newsalt,
-    };
-    if (time) setPayload.time = time;
+    if (!salt || !newsalt || !time) {
+      log(`get_token: missing fields. salt=${salt}, newsalt=${newsalt}, time=${time}`, "commands");
+      return null;
+    }
 
-    const setResp = await sendTcpCommand(host, port, setPayload);
-    log(`set_token response: ${JSON.stringify(setResp).substring(0, 500)}`, "commands");
+    const pwd = md5crypt(password, "$1$" + salt + "$");
+    const pwdParts = pwd.split("$");
+    const key = pwdParts[3];
+    log(`md5crypt key derived, length=${key.length}`, "commands");
 
-    return { token: fullToken, newsalt };
+    const aesKeyHex = crypto.createHash("sha256").update(key).digest("hex");
+    const aesKey = Buffer.from(aesKeyHex, "hex");
+
+    const signInput = key + String(time);
+    const tmp = md5crypt(signInput, "$1$" + newsalt + "$");
+    const tmpParts = tmp.split("$");
+    const sign = tmpParts[3];
+    log(`Sign computed, length=${sign.length}`, "commands");
+
+    return { sign, aesKey };
   } catch (err: any) {
     log(`getApiToken error: ${err.message}`, "commands");
     return null;
   }
 }
 
-function getAesKey(token: string): Buffer {
-  return crypto.createHash("md5").update(token).digest();
+function padTo16(s: string): Buffer {
+  const buf = Buffer.from(s, "utf8");
+  const padded = Buffer.alloc(Math.ceil(buf.length / 16) * 16, 0);
+  buf.copy(padded);
+  return padded;
 }
 
-function encryptCommand(cmdData: string, token: string): string {
-  const key = getAesKey(token);
-  const iv = crypto.randomBytes(16);
-  const cipher = crypto.createCipheriv("aes-128-cbc", key, iv);
-  cipher.setAutoPadding(true);
-  let encrypted = cipher.update(cmdData, "utf8");
+function encryptCommand(cmdData: string, aesKey: Buffer): string {
+  const padded = padTo16(cmdData);
+  const cipher = crypto.createCipheriv("aes-256-ecb", aesKey, null);
+  cipher.setAutoPadding(false);
+  let encrypted = cipher.update(padded);
   encrypted = Buffer.concat([encrypted, cipher.final()]);
-  const combined = Buffer.concat([iv, encrypted]);
-  return combined.toString("base64");
+  return encrypted.toString("base64");
 }
 
-function decryptResponse(encData: string, token: string): any {
+function decryptResponse(encData: string, aesKey: Buffer): any {
   try {
-    const key = getAesKey(token);
     const buf = Buffer.from(encData, "base64");
-    const iv = buf.subarray(0, 16);
-    const encrypted = buf.subarray(16);
-    const decipher = crypto.createDecipheriv("aes-128-cbc", key, iv);
-    decipher.setAutoPadding(true);
-    let decrypted = decipher.update(encrypted);
+    const decipher = crypto.createDecipheriv("aes-256-ecb", aesKey, null);
+    decipher.setAutoPadding(false);
+    let decrypted = decipher.update(buf);
     decrypted = Buffer.concat([decrypted, decipher.final()]);
-    const text = decrypted.toString("utf8").replace(/\0+$/, "");
+    const text = decrypted.toString("utf8").replace(/\0+$/g, "");
     return JSON.parse(text);
   } catch (err: any) {
     log(`decrypt failed: ${err.message}`, "commands");
@@ -162,7 +155,6 @@ export async function sendMinerCommand(
   log(`Sending command '${apiCmd}' (${command}) to ${host}:${port}`, "commands");
 
   try {
-    let token: string | undefined;
     const writeCommands = [
       "restart_btminer", "reboot", "power_off",
       "set_target_freq", "set_power_pct",
@@ -189,18 +181,26 @@ export async function sendMinerCommand(
     let response: any;
 
     if (needsAuth && authResult) {
-      const cmdData = JSON.stringify({ cmd: apiCmd, ...params });
-      const enc = encryptCommand(cmdData, authResult.token);
+      const cmdData = JSON.stringify({ cmd: apiCmd, token: authResult.sign, ...params });
+      const enc = encryptCommand(cmdData, authResult.aesKey);
       const encPayload = { enc: 1, data: enc };
       log(`Sending encrypted payload for '${apiCmd}'`, "commands");
       const rawResp = await sendTcpCommand(host, port, encPayload);
       log(`Encrypted response: ${JSON.stringify(rawResp).substring(0, 500)}`, "commands");
 
-      if (rawResp?.enc && rawResp?.data) {
-        const decrypted = decryptResponse(rawResp.data, authResult.token);
-        if (decrypted) {
-          log(`Decrypted response: ${JSON.stringify(decrypted).substring(0, 500)}`, "commands");
-          response = decrypted;
+      if (rawResp?.STATUS === "E") {
+        log(`Command error: ${rawResp.Msg}`, "commands");
+        response = rawResp;
+      } else if (rawResp?.enc) {
+        const encResp = typeof rawResp.enc === "string" ? rawResp.enc : rawResp.data;
+        if (encResp) {
+          const decrypted = decryptResponse(encResp, authResult.aesKey);
+          if (decrypted) {
+            log(`Decrypted response: ${JSON.stringify(decrypted).substring(0, 500)}`, "commands");
+            response = decrypted;
+          } else {
+            response = rawResp;
+          }
         } else {
           response = rawResp;
         }
@@ -209,10 +209,9 @@ export async function sendMinerCommand(
       }
     } else {
       const payload: Record<string, any> = { cmd: apiCmd };
-      if (token) payload.token = token;
       Object.assign(payload, params);
 
-      log(`Sending payload: ${JSON.stringify({ ...payload, token: token ? `[set]` : "[none]" })}`, "commands");
+      log(`Sending payload: ${JSON.stringify(payload)}`, "commands");
       response = await sendTcpCommand(host, port, payload);
       log(`Command response: ${JSON.stringify(response).substring(0, 500)}`, "commands");
     }

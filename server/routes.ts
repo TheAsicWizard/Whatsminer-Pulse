@@ -3,7 +3,7 @@ import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { insertMinerSchema, insertAlertRuleSchema, insertScanConfigSchema, insertContainerSchema, type InsertMacLocationMapping } from "@shared/schema";
 import { z, ZodError } from "zod";
-import { scanIpRange, getScanProgress } from "./scanner";
+import { scanIpRange, getScanProgress, scanIpRangeThrottled, getBulkScanProgress, isBulkScanning, initBulkScan, updateBulkProgress, completeBulkScan, generateIpRange } from "./scanner";
 import multer from "multer";
 
 
@@ -319,6 +319,137 @@ export async function registerRoutes(
       const progress = getScanProgress(req.params.id);
       if (!progress) {
         return res.json({ status: "idle", total: 0, scanned: 0, found: 0, results: [] });
+      }
+      res.json(progress);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post("/api/scan-all", async (_req, res) => {
+    try {
+      if (isBulkScanning()) {
+        return res.status(409).json({ message: "A bulk scan is already in progress" });
+      }
+
+      const allContainers = await storage.getContainers();
+      const scannable = allContainers.filter((c) => c.ipRangeStart && c.ipRangeEnd);
+
+      if (scannable.length === 0) {
+        return res.status(400).json({ message: "No containers have IP ranges configured" });
+      }
+
+      let totalIps = 0;
+      for (const c of scannable) {
+        totalIps += generateIpRange(c.ipRangeStart!, c.ipRangeEnd!).length;
+      }
+
+      initBulkScan(scannable.length, totalIps);
+      res.json({ message: "Bulk scan started", containers: scannable.length, totalIps });
+
+      (async () => {
+        let ipsScannedSoFar = 0;
+        try {
+          for (const container of scannable) {
+            const containerIps = generateIpRange(container.ipRangeStart!, container.ipRangeEnd!);
+            updateBulkProgress({ currentContainer: container.name });
+            console.log(`[bulk-scan] Scanning ${container.name}: ${container.ipRangeStart} - ${container.ipRangeEnd} (${containerIps.length} IPs)`);
+
+            const results = await scanIpRangeThrottled(
+              container.ipRangeStart!,
+              container.ipRangeEnd!,
+              4028,
+              (scanned, found) => {
+                updateBulkProgress({
+                  scannedIps: ipsScannedSoFar + scanned,
+                });
+              }
+            );
+
+            ipsScannedSoFar += containerIps.length;
+
+            let newMiners = 0;
+            let updatedMiners = 0;
+            for (const result of results) {
+              let existing = await storage.getMinerByIp(result.ip, 4028);
+
+              if (result.mac && !existing) {
+                existing = await storage.getMinerByMac(result.mac) || undefined;
+                if (!existing) {
+                  existing = await storage.findMinerByMacMapping(result.mac) || undefined;
+                }
+                if (existing) {
+                  await storage.updateMiner(existing.id, {
+                    ipAddress: result.ip,
+                    port: 4028,
+                    macAddress: result.mac,
+                    status: "online",
+                    source: "scanned",
+                  });
+                  updatedMiners++;
+                }
+              }
+
+              if (!existing) {
+                await storage.createMiner({
+                  name: `${result.model || "WhatsMiner"} @ ${result.ip}`,
+                  ipAddress: result.ip,
+                  port: 4028,
+                  location: container.name,
+                  model: result.model || "WhatsMiner",
+                  status: "online",
+                  source: "scanned",
+                  macAddress: result.mac || undefined,
+                  serialNumber: result.serial || undefined,
+                });
+                newMiners++;
+              } else {
+                const updates: any = {};
+                if (existing.status === "offline") updates.status = "online";
+                if (result.mac && !existing.macAddress) updates.macAddress = result.mac;
+                if (result.serial && !existing.serialNumber) updates.serialNumber = result.serial;
+                if (existing.source !== "scanned") updates.source = "scanned";
+                if (Object.keys(updates).length > 0) {
+                  await storage.updateMiner(existing.id, updates);
+                }
+              }
+            }
+
+            updateBulkProgress({
+              completedContainers: (getBulkScanProgress()?.completedContainers || 0) + 1,
+              scannedIps: ipsScannedSoFar,
+              totalFound: (getBulkScanProgress()?.totalFound || 0) + results.length,
+            });
+
+            console.log(`[bulk-scan] ${container.name}: ${results.length} found, ${newMiners} new, ${updatedMiners} updated`);
+          }
+
+          try {
+            const macResult = await storage.autoAssignByMac();
+            if (macResult.assigned > 0) {
+              console.log(`[bulk-scan] Auto-assigned ${macResult.assigned} miners by MAC`);
+            }
+          } catch (e) {
+            console.error("[bulk-scan] MAC auto-assign error:", e);
+          }
+
+          completeBulkScan();
+          console.log(`[bulk-scan] Complete: scanned ${scannable.length} containers, found ${getBulkScanProgress()?.totalFound || 0} miners`);
+        } catch (err: any) {
+          completeBulkScan(err.message);
+          console.error("[bulk-scan] Error:", err.message);
+        }
+      })();
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.get("/api/scan-all/progress", async (_req, res) => {
+    try {
+      const progress = getBulkScanProgress();
+      if (!progress) {
+        return res.json({ status: "idle", totalContainers: 0, completedContainers: 0, currentContainer: "", totalIps: 0, scannedIps: 0, totalFound: 0 });
       }
       res.json(progress);
     } catch (err: any) {

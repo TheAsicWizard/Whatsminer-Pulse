@@ -60,7 +60,7 @@ import {
   DollarSign,
   Map,
 } from "lucide-react";
-import type { Miner, AlertRule, ScanConfig, ScanProgress, Container, ContainerWithSlots, MinerWithLatest, SiteSettings } from "@shared/schema";
+import type { Miner, AlertRule, ScanConfig, ScanProgress, BulkScanProgress, Container, ContainerWithSlots, MinerWithLatest, SiteSettings } from "@shared/schema";
 import SiteLayoutEditor from "@/components/site-layout-editor";
 
 export default function Settings() {
@@ -337,6 +337,7 @@ function NetworkScanner() {
   const [endIp, setEndIp] = useState("");
   const [port, setPort] = useState("4028");
   const [scanningConfigId, setScanningConfigId] = useState<string | null>(null);
+  const [bulkScanning, setBulkScanning] = useState(false);
 
   const { data: configs, isLoading } = useQuery<ScanConfig[]>({
     queryKey: ["/api/scan-configs"],
@@ -347,6 +348,24 @@ function NetworkScanner() {
     enabled: !!scanningConfigId,
     refetchInterval: scanningConfigId ? 1000 : false,
   });
+
+  const { data: bulkProgress } = useQuery<BulkScanProgress>({
+    queryKey: ["/api/scan-all/progress"],
+    enabled: bulkScanning,
+    refetchInterval: bulkScanning ? 1000 : false,
+  });
+
+  useEffect(() => {
+    if (bulkProgress?.status === "completed" || bulkProgress?.status === "error") {
+      if (bulkProgress.status === "completed") {
+        toast({ title: "Bulk scan complete", description: `Scanned ${bulkProgress.totalContainers} containers, found ${bulkProgress.totalFound} miners` });
+        queryClient.invalidateQueries({ predicate: (q) => (q.queryKey[0] as string)?.startsWith("/api/miners") });
+        queryClient.invalidateQueries({ queryKey: ["/api/fleet/stats"] });
+        queryClient.invalidateQueries({ queryKey: ["/api/containers"] });
+      }
+      setTimeout(() => setBulkScanning(false), 3000);
+    }
+  }, [bulkProgress?.status]);
 
   useEffect(() => {
     if (scanProgress?.status === "completed" || scanProgress?.status === "error") {
@@ -408,7 +427,21 @@ function NetworkScanner() {
     },
   });
 
+  const bulkScanMutation = useMutation({
+    mutationFn: async () => {
+      await apiRequest("POST", "/api/scan-all");
+    },
+    onSuccess: () => {
+      setBulkScanning(true);
+      toast({ title: "Bulk scan started", description: "Scanning all containers sequentially to keep performance smooth..." });
+    },
+    onError: (err: Error) => {
+      toast({ title: "Bulk scan failed", description: err.message, variant: "destructive" });
+    },
+  });
+
   const isScanning = scanningConfigId !== null && scanProgress?.status === "scanning";
+  const isBulkActive = bulkScanning && bulkProgress?.status === "scanning";
 
   return (
     <Card>
@@ -423,13 +456,28 @@ function NetworkScanner() {
               Scan IP ranges to discover WhatsMiner devices on your network
             </CardDescription>
           </div>
-          <Dialog open={open} onOpenChange={setOpen}>
-            <DialogTrigger asChild>
-              <Button size="sm" data-testid="button-add-scan-range">
-                <Plus className="w-4 h-4 mr-1" />
-                Add IP Range
-              </Button>
-            </DialogTrigger>
+          <div className="flex items-center gap-2">
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => bulkScanMutation.mutate()}
+              disabled={isScanning || isBulkActive || bulkScanMutation.isPending}
+              data-testid="button-scan-all"
+            >
+              {isBulkActive ? (
+                <Loader2 className="w-4 h-4 mr-1 animate-spin" />
+              ) : (
+                <Scan className="w-4 h-4 mr-1" />
+              )}
+              Scan All
+            </Button>
+            <Dialog open={open} onOpenChange={setOpen}>
+              <DialogTrigger asChild>
+                <Button size="sm" data-testid="button-add-scan-range">
+                  <Plus className="w-4 h-4 mr-1" />
+                  Add IP Range
+                </Button>
+              </DialogTrigger>
             <DialogContent>
               <DialogHeader>
                 <DialogTitle>Add IP Range</DialogTitle>
@@ -490,10 +538,44 @@ function NetworkScanner() {
                 </Button>
               </div>
             </DialogContent>
-          </Dialog>
+            </Dialog>
+          </div>
         </div>
       </CardHeader>
       <CardContent>
+        {bulkScanning && bulkProgress && bulkProgress.status === "scanning" && (
+          <div className="mb-4 p-3 rounded-md bg-blue-500/10 border border-blue-500/20 space-y-2" data-testid="bulk-scan-progress">
+            <div className="flex items-center gap-2 text-sm">
+              <Loader2 className="w-4 h-4 animate-spin text-blue-500" />
+              <span className="font-medium">
+                Scanning all containers... {bulkProgress.completedContainers}/{bulkProgress.totalContainers}
+              </span>
+              <Badge variant="outline" className="ml-auto text-[10px] no-default-active-elevate">
+                {bulkProgress.totalFound} found
+              </Badge>
+            </div>
+            <Progress
+              value={bulkProgress.totalIps > 0 ? (bulkProgress.scannedIps / bulkProgress.totalIps) * 100 : 0}
+              className="h-1.5"
+            />
+            <div className="flex items-center justify-between text-[10px] text-muted-foreground">
+              <span>Current: {bulkProgress.currentContainer}</span>
+              <span>{bulkProgress.scannedIps.toLocaleString()}/{bulkProgress.totalIps.toLocaleString()} IPs</span>
+            </div>
+          </div>
+        )}
+
+        {bulkScanning && bulkProgress?.status === "completed" && (
+          <div className="mb-4 p-3 rounded-md bg-green-500/10 border border-green-500/20" data-testid="bulk-scan-results">
+            <div className="flex items-center gap-2 text-sm">
+              <CheckCircle2 className="w-4 h-4 text-green-500" />
+              <span className="font-medium text-green-600 dark:text-green-400">
+                Bulk scan complete: {bulkProgress.totalFound} miners found across {bulkProgress.totalContainers} containers
+              </span>
+            </div>
+          </div>
+        )}
+
         {isScanning && scanProgress && (
           <div className="mb-4 p-3 rounded-md bg-primary/10 border border-primary/20 space-y-2" data-testid="scan-progress">
             <div className="flex items-center gap-2 text-sm">
@@ -542,7 +624,7 @@ function NetworkScanner() {
         ) : configs && configs.length > 0 ? (
           <ScanConfigList
             configs={configs}
-            isScanning={isScanning}
+            isScanning={isScanning || isBulkActive}
             scanMutation={scanMutation}
             deleteMutation={deleteMutation}
           />

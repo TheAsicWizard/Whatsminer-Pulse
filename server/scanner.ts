@@ -1,14 +1,24 @@
 import * as net from "net";
-import type { ScanResult, ScanProgress } from "@shared/schema";
+import type { ScanResult, ScanProgress, BulkScanProgress } from "@shared/schema";
 import { log } from "./index";
 
 const SCAN_TIMEOUT = 3000;
 const MAX_CONCURRENT = 20;
+const BULK_MAX_CONCURRENT = 10;
 
 const activeScanProgress = new Map<string, ScanProgress>();
+let bulkScanProgress: BulkScanProgress | null = null;
 
 export function getScanProgress(configId: string): ScanProgress | undefined {
   return activeScanProgress.get(configId);
+}
+
+export function getBulkScanProgress(): BulkScanProgress | null {
+  return bulkScanProgress;
+}
+
+export function isBulkScanning(): boolean {
+  return bulkScanProgress?.status === "scanning";
 }
 
 function ipToInt(ip: string): number {
@@ -275,6 +285,64 @@ export async function scanIpRange(
   return allResults.filter((r) => r.found);
 }
 
+
+export async function scanIpRangeThrottled(
+  startIp: string,
+  endIp: string,
+  port: number,
+  onProgress?: (scanned: number, found: number) => void
+): Promise<ScanResult[]> {
+  const ips = generateIpRange(startIp, endIp);
+  const allResults: ScanResult[] = [];
+
+  for (let i = 0; i < ips.length; i += BULK_MAX_CONCURRENT) {
+    const batch = ips.slice(i, i + BULK_MAX_CONCURRENT);
+    const tasks = batch.map((ip) => () => probeMiner(ip, port));
+    const results = await runBatch(tasks);
+
+    for (const result of results) {
+      allResults.push(result);
+      if (result.found) {
+        log(`Found miner at ${result.ip}:${port} - ${result.model}`, "scanner");
+      }
+    }
+    if (onProgress) {
+      onProgress(
+        Math.min(i + BULK_MAX_CONCURRENT, ips.length),
+        allResults.filter((r) => r.found).length
+      );
+    }
+  }
+
+  return allResults.filter((r) => r.found);
+}
+
+export function initBulkScan(totalContainers: number, totalIps: number): void {
+  bulkScanProgress = {
+    status: "scanning",
+    totalContainers,
+    completedContainers: 0,
+    currentContainer: "",
+    totalIps,
+    scannedIps: 0,
+    totalFound: 0,
+    startedAt: new Date().toISOString(),
+  };
+}
+
+export function updateBulkProgress(updates: Partial<BulkScanProgress>): void {
+  if (bulkScanProgress) {
+    Object.assign(bulkScanProgress, updates);
+  }
+}
+
+export function completeBulkScan(error?: string): void {
+  if (bulkScanProgress) {
+    bulkScanProgress.status = error ? "error" : "completed";
+    bulkScanProgress.completedAt = new Date().toISOString();
+    if (error) bulkScanProgress.error = error;
+  }
+}
 
 export async function pollRealMiner(ip: string, port: number): Promise<{
   hashrate: number;

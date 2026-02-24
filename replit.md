@@ -54,6 +54,10 @@ Real-time WhatsMiner mining fleet monitoring dashboard with health alerts, perfo
 - Grid/List view toggle on Miners page with server-side pagination
 - Alert rules engine with threshold monitoring
 - **Network Scanner**: IP range scanning to discover WhatsMiner devices via CGMiner API
+  - **Scan All Containers**: One-click bulk scan of all containers with configured IP ranges
+  - Scans containers sequentially (one at a time) with reduced concurrency (10 probes vs 20) to avoid overwhelming the machine
+  - Real-time progress: shows current container, IPs scanned/total, miners found
+  - Uses `POST /api/scan-all` and `GET /api/scan-all/progress` endpoints
 - **Real Miner Polling**: Discovered miners are automatically polled for live data
 - **Foreman CSV Import**: Upload Foreman CSV export to map MAC addresses to physical container/rack/slot positions
   - Parses miner_mac, miner_rack (e.g. C260-R008), miner_row, miner_index columns

@@ -192,3 +192,16 @@ export type ScanProgress = {
   completedAt?: string;
   error?: string;
 };
+
+export type BulkScanProgress = {
+  status: "idle" | "scanning" | "completed" | "error";
+  totalContainers: number;
+  completedContainers: number;
+  currentContainer: string;
+  totalIps: number;
+  scannedIps: number;
+  totalFound: number;
+  startedAt?: string;
+  completedAt?: string;
+  error?: string;
+};

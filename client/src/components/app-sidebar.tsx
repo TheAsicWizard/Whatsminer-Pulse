@@ -6,6 +6,7 @@ import {
   Settings,
   Activity,
   Zap,
+  BarChart3,
 } from "lucide-react";
 import {
   Sidebar,
@@ -26,6 +27,7 @@ import type { FleetStats } from "@shared/schema";
 const navItems = [
   { title: "Dashboard", url: "/", icon: LayoutDashboard },
   { title: "Miners", url: "/miners", icon: Server },
+  { title: "Analytics", url: "/analytics", icon: BarChart3 },
   { title: "Alerts", url: "/alerts", icon: Bell },
   { title: "Settings", url: "/settings", icon: Settings },
 ];

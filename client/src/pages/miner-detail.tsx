@@ -1,11 +1,15 @@
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation } from "@tanstack/react-query";
 import { useParams, Link } from "wouter";
+import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
+import { Textarea } from "@/components/ui/textarea";
 import { StatusIndicator, getMinerStatus } from "@/components/status-indicator";
 import { formatHashrate, formatPower, formatTemp, formatUptime, formatEfficiency } from "@/lib/format";
+import { apiRequest, queryClient } from "@/lib/queryClient";
+import { useToast } from "@/hooks/use-toast";
 import {
   ArrowLeft,
   Cpu,
@@ -17,6 +21,9 @@ import {
   TrendingUp,
   Target,
   Gauge,
+  StickyNote,
+  Save,
+  Loader2,
 } from "lucide-react";
 import {
   AreaChart,
@@ -33,10 +40,33 @@ import type { MinerWithLatest, MinerSnapshot } from "@shared/schema";
 
 export default function MinerDetail() {
   const params = useParams<{ id: string }>();
+  const { toast } = useToast();
+  const [notes, setNotes] = useState("");
+  const [notesMinerId, setNotesMinerId] = useState<string | null>(null);
 
   const { data: miner, isLoading } = useQuery<MinerWithLatest>({
     queryKey: ["/api/miners", params.id],
     refetchInterval: 5000,
+  });
+
+  useEffect(() => {
+    if (miner && miner.id !== notesMinerId) {
+      setNotes(miner.notes || "");
+      setNotesMinerId(miner.id);
+    }
+  }, [miner, notesMinerId]);
+
+  const notesMutation = useMutation({
+    mutationFn: async () => {
+      await apiRequest("PATCH", `/api/miners/${params.id}`, { notes });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/miners", params.id] });
+      toast({ title: "Notes saved" });
+    },
+    onError: (err: Error) => {
+      toast({ title: "Failed to save notes", description: err.message, variant: "destructive" });
+    },
   });
 
   const { data: history } = useQuery<MinerSnapshot[]>({
@@ -264,6 +294,34 @@ export default function MinerDetail() {
           </CardContent>
         </Card>
       )}
+
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-sm font-medium flex items-center gap-2">
+            <StickyNote className="w-4 h-4" />
+            Notes
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <Textarea
+            placeholder="Add notes about this miner (maintenance history, issues, etc.)"
+            value={notes}
+            onChange={(e) => setNotes(e.target.value)}
+            className="min-h-[80px] text-sm"
+            data-testid="input-miner-notes"
+          />
+          <Button
+            size="sm"
+            className="mt-2"
+            onClick={() => notesMutation.mutate()}
+            disabled={notesMutation.isPending}
+            data-testid="button-save-notes"
+          >
+            {notesMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin mr-1" /> : <Save className="w-3.5 h-3.5 mr-1" />}
+            Save Notes
+          </Button>
+        </CardContent>
+      </Card>
     </div>
   );
 }

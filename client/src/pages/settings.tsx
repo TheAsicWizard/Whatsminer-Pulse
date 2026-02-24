@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Progress } from "@/components/ui/progress";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Dialog,
   DialogContent,
@@ -56,29 +57,71 @@ import {
   ChevronDown,
   ChevronRight,
   Search,
+  DollarSign,
+  Map,
 } from "lucide-react";
-import type { Miner, AlertRule, ScanConfig, ScanProgress, Container, ContainerWithSlots, MinerWithLatest } from "@shared/schema";
+import type { Miner, AlertRule, ScanConfig, ScanProgress, Container, ContainerWithSlots, MinerWithLatest, SiteSettings } from "@shared/schema";
 import SiteLayoutEditor from "@/components/site-layout-editor";
 
 export default function Settings() {
   return (
-    <div className="p-4 md:p-6 space-y-6 overflow-auto h-full">
+    <div className="p-4 md:p-6 space-y-4 overflow-auto h-full">
       <div>
         <h2 className="text-xl font-semibold tracking-tight" data-testid="text-settings-title">
           Settings
         </h2>
         <p className="text-sm text-muted-foreground">
-          Manage miners, network scanning, and alert rules
+          Manage site layout, miners, network scanning, and alert rules
         </p>
       </div>
 
-      <SiteLayoutEditor />
-      <ForemanImport />
-      <ContainerManagement />
-      <NetworkScanner />
-      <MinerManagement />
-      <AlertRuleManagement />
-      <DangerZone />
+      <Tabs defaultValue="site" className="w-full">
+        <TabsList className="grid w-full grid-cols-5" data-testid="settings-tabs">
+          <TabsTrigger value="site" data-testid="tab-site">
+            <Map className="w-3.5 h-3.5 mr-1.5" />
+            Site Layout
+          </TabsTrigger>
+          <TabsTrigger value="import" data-testid="tab-import">
+            <Box className="w-3.5 h-3.5 mr-1.5" />
+            Import & Containers
+          </TabsTrigger>
+          <TabsTrigger value="network" data-testid="tab-network">
+            <Radio className="w-3.5 h-3.5 mr-1.5" />
+            Network
+          </TabsTrigger>
+          <TabsTrigger value="alerts" data-testid="tab-alerts">
+            <Shield className="w-3.5 h-3.5 mr-1.5" />
+            Alerts
+          </TabsTrigger>
+          <TabsTrigger value="general" data-testid="tab-general">
+            <DollarSign className="w-3.5 h-3.5 mr-1.5" />
+            General
+          </TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="site" className="space-y-4 mt-4">
+          <SiteLayoutEditor />
+        </TabsContent>
+
+        <TabsContent value="import" className="space-y-4 mt-4">
+          <ForemanImport />
+          <ContainerManagement />
+        </TabsContent>
+
+        <TabsContent value="network" className="space-y-4 mt-4">
+          <NetworkScanner />
+          <MinerManagement />
+        </TabsContent>
+
+        <TabsContent value="alerts" className="space-y-4 mt-4">
+          <AlertRuleManagement />
+        </TabsContent>
+
+        <TabsContent value="general" className="space-y-4 mt-4">
+          <CostSettings />
+          <DangerZone />
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }
@@ -1400,6 +1443,92 @@ function ContainerManagement() {
             </p>
           </div>
         )}
+      </CardContent>
+    </Card>
+  );
+}
+
+function CostSettings() {
+  const { toast } = useToast();
+  const { data: settings, isLoading } = useQuery<SiteSettings>({
+    queryKey: ["/api/site-settings"],
+  });
+
+  const [costPerKwh, setCostPerKwh] = useState("");
+  const [currency, setCurrency] = useState("$");
+
+  useEffect(() => {
+    if (settings) {
+      setCostPerKwh(String(settings.electricityCostPerKwh ?? 0.065));
+      setCurrency(settings.currencySymbol ?? "$");
+    }
+  }, [settings]);
+
+  const updateMutation = useMutation({
+    mutationFn: async () => {
+      await apiRequest("PATCH", "/api/site-settings", {
+        electricityCostPerKwh: parseFloat(costPerKwh),
+        currencySymbol: currency,
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/site-settings"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/fleet/analytics"] });
+      toast({ title: "Cost settings updated" });
+    },
+    onError: (err: Error) => {
+      toast({ title: "Failed to update", description: err.message, variant: "destructive" });
+    },
+  });
+
+  if (isLoading) return <Skeleton className="h-32 w-full" />;
+
+  return (
+    <Card data-testid="card-cost-settings">
+      <CardHeader className="pb-3">
+        <CardTitle className="text-sm font-medium flex items-center gap-2">
+          <DollarSign className="w-4 h-4" />
+          Electricity Cost
+        </CardTitle>
+        <CardDescription className="text-xs">
+          Set your electricity rate for cost calculations on the Analytics page
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        <div className="grid grid-cols-2 gap-4 max-w-md">
+          <div className="space-y-2">
+            <Label htmlFor="cost-kwh">Cost per kWh</Label>
+            <Input
+              id="cost-kwh"
+              type="number"
+              step="0.001"
+              min="0"
+              value={costPerKwh}
+              onChange={(e) => setCostPerKwh(e.target.value)}
+              data-testid="input-cost-kwh"
+            />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="currency">Currency Symbol</Label>
+            <Input
+              id="currency"
+              value={currency}
+              onChange={(e) => setCurrency(e.target.value)}
+              maxLength={5}
+              data-testid="input-currency"
+            />
+          </div>
+        </div>
+        <Button
+          className="mt-4"
+          size="sm"
+          onClick={() => updateMutation.mutate()}
+          disabled={updateMutation.isPending || !costPerKwh}
+          data-testid="button-save-cost"
+        >
+          {updateMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-1" /> : null}
+          Save Cost Settings
+        </Button>
       </CardContent>
     </Card>
   );

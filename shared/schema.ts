@@ -14,6 +14,7 @@ export const miners = pgTable("miners", {
   source: text("source").notNull().default("manual"),
   macAddress: text("mac_address"),
   serialNumber: text("serial_number"),
+  notes: text("notes"),
   latestSnapshotId: varchar("latest_snapshot_id"),
   createdAt: timestamp("created_at").defaultNow(),
 });
@@ -107,6 +108,8 @@ export const siteSettings = pgTable("site_settings", {
   backgroundImage: text("background_image"),
   useCustomLayout: boolean("use_custom_layout").default(false),
   containerScale: real("container_scale").default(1.0),
+  electricityCostPerKwh: real("electricity_cost_per_kwh").default(0.065),
+  currencySymbol: text("currency_symbol").default("$"),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
 
@@ -119,7 +122,7 @@ export const slotAssignments = pgTable("slot_assignments", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
-export const insertMinerSchema = createInsertSchema(miners).omit({ id: true, createdAt: true, latestSnapshotId: true });
+export const insertMinerSchema = createInsertSchema(miners).omit({ id: true, createdAt: true, latestSnapshotId: true, notes: true });
 export const insertSnapshotSchema = createInsertSchema(minerSnapshots).omit({ id: true, createdAt: true });
 export const insertAlertRuleSchema = createInsertSchema(alertRules).omit({ id: true, createdAt: true });
 export const insertAlertSchema = createInsertSchema(alerts).omit({ id: true, createdAt: true });

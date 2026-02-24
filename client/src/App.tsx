@@ -12,6 +12,7 @@ import Dashboard from "@/pages/dashboard";
 import Miners from "@/pages/miners";
 import MinerDetail from "@/pages/miner-detail";
 import Alerts from "@/pages/alerts";
+import Analytics from "@/pages/analytics";
 import Settings from "@/pages/settings";
 
 function Router() {
@@ -21,6 +22,7 @@ function Router() {
       <Route path="/miners" component={Miners} />
       <Route path="/miners/:id" component={MinerDetail} />
       <Route path="/alerts" component={Alerts} />
+      <Route path="/analytics" component={Analytics} />
       <Route path="/settings" component={Settings} />
       <Route component={NotFound} />
     </Switch>

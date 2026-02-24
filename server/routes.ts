@@ -19,6 +19,31 @@ export async function registerRoutes(
   app: Express
 ): Promise<Server> {
 
+  app.get("/api/miners/export/csv", async (req, res) => {
+    try {
+      const allMiners = await storage.getMinersWithLatest();
+      const headers = ["Name", "IP Address", "Port", "Location", "Model", "Status", "Source", "MAC Address", "Serial Number", "Hashrate (GH/s)", "Temperature (C)", "Power (W)", "Fan In", "Fan Out", "Uptime (s)", "Efficiency (J/TH)", "Notes"];
+      const rows = allMiners.map((m) => {
+        const s = m.latest;
+        const ths = (s?.hashrate ?? 0) / 1000;
+        const eff = ths > 0 && s?.power ? (s.power / ths).toFixed(1) : "";
+        return [
+          m.name, m.ipAddress, m.port, m.location || "", m.model || "", m.status, m.source,
+          m.macAddress || "", m.serialNumber || "",
+          s?.hashrate?.toFixed(2) ?? "", s?.temperature?.toFixed(1) ?? "", s?.power?.toFixed(0) ?? "",
+          s?.fanSpeedIn?.toFixed(0) ?? "", s?.fanSpeedOut?.toFixed(0) ?? "", s?.elapsed?.toFixed(0) ?? "",
+          eff, m.notes || "",
+        ].map((v) => `"${String(v).replace(/"/g, '""')}"`).join(",");
+      });
+      const csv = [headers.join(","), ...rows].join("\n");
+      res.setHeader("Content-Type", "text/csv");
+      res.setHeader("Content-Disposition", `attachment; filename="miners-export-${new Date().toISOString().slice(0, 10)}.csv"`);
+      res.send(csv);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
   app.get("/api/miners", async (req, res) => {
     try {
       const page = parseInt(req.query.page as string) || 1;
@@ -53,6 +78,17 @@ export async function registerRoutes(
         return res.status(400).json({ message: handleZodError(err) });
       }
       res.status(400).json({ message: err.message });
+    }
+  });
+
+  app.patch("/api/miners/:id", async (req, res) => {
+    try {
+      const { notes } = req.body;
+      const miner = await storage.updateMiner(req.params.id, { notes });
+      if (!miner) return res.status(404).json({ message: "Miner not found" });
+      res.json(miner);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
     }
   });
 
@@ -443,6 +479,8 @@ export async function registerRoutes(
     backgroundImage: z.string().nullable().optional(),
     useCustomLayout: z.boolean().optional(),
     containerScale: z.number().min(0.3).max(3).optional(),
+    electricityCostPerKwh: z.number().min(0).max(10).optional(),
+    currencySymbol: z.string().max(5).optional(),
   });
 
   app.patch("/api/site-settings", async (req, res) => {
@@ -631,6 +669,78 @@ export async function registerRoutes(
         containers: Array.from(containers).sort(),
       });
     } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.get("/api/fleet/analytics", async (_req, res) => {
+    try {
+      const allMiners = await storage.getMinersWithLatest();
+      const settings = await storage.getSiteSettings();
+      const costPerKwh = settings?.electricityCostPerKwh ?? 0.065;
+      const currency = settings?.currencySymbol ?? "$";
+
+      const online = allMiners.filter((m) => m.status === "online");
+      const totalPowerKw = online.reduce((sum, m) => sum + ((m.latest?.power ?? 0) / 1000), 0);
+      const dailyCost = totalPowerKw * 24 * costPerKwh;
+      const monthlyCost = dailyCost * 30;
+
+      const totalHashrateTh = online.reduce((sum, m) => sum + ((m.latest?.hashrate ?? 0) / 1000), 0);
+      const avgEfficiency = totalHashrateTh > 0 ? (totalPowerKw * 1000 / totalHashrateTh) : 0;
+
+      const hashrateDistribution: Record<string, number> = {};
+      const tempDistribution: Record<string, number> = {};
+      const modelDistribution: Record<string, number> = {};
+      const statusDistribution: Record<string, number> = {};
+
+      allMiners.forEach((m) => {
+        const model = m.model || "Unknown";
+        modelDistribution[model] = (modelDistribution[model] || 0) + 1;
+        statusDistribution[m.status] = (statusDistribution[m.status] || 0) + 1;
+
+        if (m.latest?.hashrate) {
+          const bucket = Math.floor((m.latest.hashrate / 1000) / 10) * 10;
+          const key = `${bucket}-${bucket + 10} TH/s`;
+          hashrateDistribution[key] = (hashrateDistribution[key] || 0) + 1;
+        }
+        if (m.latest?.temperature) {
+          const bucket = Math.floor(m.latest.temperature / 5) * 5;
+          const key = `${bucket}-${bucket + 5}°C`;
+          tempDistribution[key] = (tempDistribution[key] || 0) + 1;
+        }
+      });
+
+      res.json({
+        costPerKwh,
+        currency,
+        totalPowerKw,
+        dailyCost,
+        monthlyCost,
+        totalHashrateTh,
+        avgEfficiency,
+        totalMiners: allMiners.length,
+        onlineMiners: online.length,
+        hashrateDistribution: Object.entries(hashrateDistribution).map(([range, count]) => ({ range, count })).sort((a, b) => a.range.localeCompare(b.range, undefined, { numeric: true })),
+        tempDistribution: Object.entries(tempDistribution).map(([range, count]) => ({ range, count })).sort((a, b) => a.range.localeCompare(b.range, undefined, { numeric: true })),
+        modelDistribution: Object.entries(modelDistribution).map(([model, count]) => ({ model, count })).sort((a, b) => b.count - a.count),
+        statusDistribution: Object.entries(statusDistribution).map(([status, count]) => ({ status, count })),
+      });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post("/api/miners/batch/delete", async (req, res) => {
+    try {
+      const { minerIds } = z.object({ minerIds: z.array(z.string()) }).parse(req.body);
+      let deleted = 0;
+      for (const id of minerIds) {
+        await storage.deleteMiner(id);
+        deleted++;
+      }
+      res.json({ deleted });
+    } catch (err: any) {
+      if (err instanceof ZodError) return res.status(400).json({ message: handleZodError(err) });
       res.status(500).json({ message: err.message });
     }
   });

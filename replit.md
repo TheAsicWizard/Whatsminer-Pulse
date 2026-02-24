@@ -3,6 +3,8 @@
 ## User Preferences
 - **Workflow**: User develops on Replit but runs the app locally on their own machine. After every set of changes, push to git so the user can `git pull` from their local machine.
 - **Always push to git** after completing changes.
+- **GitHub Remote**: `https://github.com/TheAsicWizard/Whatsminer-Pulse.git` (use GITHUB_TOKEN for auth)
+- **Push command**: `git push "https://x-access-token:${GITHUB_TOKEN}@github.com/TheAsicWizard/Whatsminer-Pulse.git" main`
 
 ## Overview
 Real-time WhatsMiner mining fleet monitoring dashboard with health alerts, performance tracking, network scanning, and real miner polling via CGMiner API.

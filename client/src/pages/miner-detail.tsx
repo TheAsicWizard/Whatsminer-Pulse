@@ -657,7 +657,13 @@ function MinerCommandPanel({ minerId, minerIp, minerSource }: { minerId: string;
                         </button>
                         {isExpanded && hasData && (
                           <div className="px-3 pb-2 border-t border-border/30">
-                            <CommandResponseData data={entry.data} command={entry.command} />
+                            {!entry.success ? (
+                              <pre className="pt-2 text-[10px] font-mono text-red-400 whitespace-pre-wrap break-all max-h-[300px] overflow-y-auto" data-testid="response-data-error">
+                                {JSON.stringify(entry.data, null, 2)}
+                              </pre>
+                            ) : (
+                              <CommandResponseData data={entry.data} command={entry.command} />
+                            )}
                           </div>
                         )}
                       </div>

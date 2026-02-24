@@ -186,35 +186,11 @@ export async function sendMinerCommand(
 
     let response: any;
 
-    const payload: Record<string, any> = { command: apiCmd, ...params };
-    log(`Sending plain command: ${JSON.stringify(payload)}`, "commands");
-    try {
-      response = await sendTcpCommand(host, port, payload);
-      log(`Plain response: ${JSON.stringify(response).substring(0, 500)}`, "commands");
-    } catch (plainErr: any) {
-      log(`Plain command failed (${plainErr.message}), trying 'cmd' key format...`, "commands");
-      const payload2: Record<string, any> = { cmd: apiCmd, ...params };
-      response = await sendTcpCommand(host, port, payload2);
-      log(`cmd-key response: ${JSON.stringify(response).substring(0, 500)}`, "commands");
-    }
-
-    const plainStatus = response?.STATUS;
-    const plainIsError = plainStatus === "E" || (Array.isArray(plainStatus) && plainStatus[0]?.STATUS === "E");
-    const plainMsg = (typeof response?.Msg === "string" ? response.Msg : "") ||
-      (Array.isArray(plainStatus) && plainStatus[0]?.Msg ? plainStatus[0].Msg : "");
-    const needsEncryption = plainIsError && (
-      plainMsg.toLowerCase().includes("token") ||
-      plainMsg.toLowerCase().includes("permission") ||
-      plainMsg.toLowerCase().includes("auth") ||
-      plainMsg.toLowerCase().includes("invalid") ||
-      (response?.Code === 14 || response?.Code === 23)
-    );
-
-    if (needsEncryption && needsAuth && apiPassword) {
-      log(`Miner requires encryption (${plainMsg}), attempting token auth...`, "commands");
+    if (needsAuth && apiPassword) {
+      log(`Write command — using encrypted API flow`, "commands");
       const authResult = await getApiToken(host, port, apiPassword);
       if (authResult) {
-        log(`Auth token obtained, sending encrypted command`, "commands");
+        log(`Auth obtained (sign=${authResult.sign.substring(0, 8)}...), sending encrypted command`, "commands");
         const cmdData = JSON.stringify({ cmd: apiCmd, token: authResult.sign, ...params });
         const enc = encryptCommand(cmdData, authResult.aesKey);
         const encPayload = { enc: 1, data: enc };
@@ -240,10 +216,21 @@ export async function sendMinerCommand(
           response = rawResp;
         }
       } else {
-        log(`Auth token failed — returning plain error response`, "commands");
+        log(`Auth failed — trying plain command as fallback`, "commands");
+        const payload: Record<string, any> = { cmd: apiCmd, ...params };
+        response = await sendTcpCommand(host, port, payload);
+        log(`Fallback response: ${JSON.stringify(response).substring(0, 500)}`, "commands");
       }
-    } else if (needsEncryption && !apiPassword) {
-      log(`Miner requires auth but no password provided`, "commands");
+    } else if (needsAuth && !apiPassword) {
+      log(`Write command without password — trying plain command`, "commands");
+      const payload: Record<string, any> = { cmd: apiCmd, ...params };
+      response = await sendTcpCommand(host, port, payload);
+      log(`Plain response: ${JSON.stringify(response).substring(0, 500)}`, "commands");
+    } else {
+      const payload: Record<string, any> = { cmd: apiCmd, ...params };
+      log(`Read command: ${JSON.stringify(payload)}`, "commands");
+      response = await sendTcpCommand(host, port, payload);
+      log(`Response: ${JSON.stringify(response).substring(0, 500)}`, "commands");
     }
 
     const statusArr = response?.STATUS;

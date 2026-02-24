@@ -53,27 +53,47 @@ function sendTcpCommand(host: string, port: number, payload: object): Promise<an
 async function getApiToken(host: string, port: number, password: string): Promise<string | null> {
   try {
     const tokenResp = await sendTcpCommand(host, port, { cmd: "get_token" });
-    const tokenData = tokenResp?.Msg;
-    if (!tokenData) return null;
+    log(`get_token response: ${JSON.stringify(tokenResp).substring(0, 500)}`, "commands");
+
+    const tokenData = tokenResp?.Msg || tokenResp?.msg;
+    if (!tokenData || typeof tokenData !== "object") {
+      log(`get_token: no Msg object in response`, "commands");
+      return null;
+    }
 
     const salt = tokenData.salt || tokenData.Salt;
-    const newsalt = tokenData.newsalt || tokenData.Newsalt;
-    if (!salt) return null;
+    const newsalt = tokenData.newsalt || tokenData.Newsalt || tokenData.newSalt;
+    const time = tokenData.time || tokenData.Time;
+    if (!salt) {
+      log(`get_token: no salt found in token data`, "commands");
+      return null;
+    }
 
     const secret = crypto.createHash("md5").update(password + salt).digest("hex");
+    log(`Computed token hash, setting token...`, "commands");
 
-    const setResp = await sendTcpCommand(host, port, {
+    const setPayload: Record<string, any> = {
       cmd: "set_token",
       token: secret,
       newsalt: newsalt || salt,
-    });
+    };
+    if (time) setPayload.time = time;
 
-    const setData = setResp?.Msg;
-    if (setData?.token) return setData.token;
+    const setResp = await sendTcpCommand(host, port, setPayload);
+    log(`set_token response: ${JSON.stringify(setResp).substring(0, 500)}`, "commands");
+
+    const setData = setResp?.Msg || setResp?.msg;
+    if (setData && typeof setData === "object" && setData.token) return setData.token;
     if (typeof setResp?.token === "string") return setResp.token;
 
+    const setStatus = setResp?.STATUS?.[0] || setResp?.status?.[0];
+    if (setStatus?.STATUS === "S" || setStatus?.status === "S") {
+      return secret;
+    }
+
     return secret;
-  } catch {
+  } catch (err: any) {
+    log(`getApiToken error: ${err.message}`, "commands");
     return null;
   }
 }
@@ -120,7 +140,9 @@ export async function sendMinerCommand(
     if (token) payload.token = token;
     Object.assign(payload, params);
 
+    log(`Sending payload: ${JSON.stringify({ ...payload, token: token ? "[set]" : "[none]" })}`, "commands");
     const response = await sendTcpCommand(host, port, payload);
+    log(`Command response: ${JSON.stringify(response).substring(0, 500)}`, "commands");
 
     const status = response?.STATUS?.[0] || response?.status?.[0];
     const msg = status?.Msg || status?.msg || response?.Msg?.msg || "";

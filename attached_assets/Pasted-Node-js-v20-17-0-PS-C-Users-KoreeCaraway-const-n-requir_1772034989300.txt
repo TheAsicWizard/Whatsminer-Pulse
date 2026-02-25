@@ -1,0 +1,60 @@
+Node.js v20.17.0
+PS C:\Users\KoreeCaraway> @'
+>> const n=require("net"),s=new n.Socket;let d="";s.setTimeout(5000);s.connect(4028,"10.21.29.53",()=>{console.log("Connected...");s.write('{"command":"edevs"}')});s.on("data",c=>{d+=c;console.log("Got "+c.length+" bytes");if(c.toString().includes("\0")){s.destroy();try{console.log(JSON.stringify(JSON.parse(d.replace(/\0/g,"")),null,2))}catch(e){console.log(d)}}});s.on("end",()=>{console.log("Connection closed");if(d)try{console.log(JSON.stringify(JSON.parse(d.replace(/\0/g,"")),null,2))}catch(e){console.log(d)}});s.on("timeout",()=>{s.destroy();console.log("Timeout")});s.on("error",e=>console.log("Error:",e.message))
+>> '@ | Out-File -Encoding ascii q.js; node q.js; Remove-Item q.js
+Connected...
+Got 811 bytes
+Connection closed
+{
+  "STATUS": [
+    {
+      "STATUS": "S",
+      "Msg": "3 ASC(s)"
+    }
+  ],
+  "DEVS": [
+    {
+      "Slot": 0,
+      "Temperature": 41.69,
+      "Chip Frequency": 162,
+      "MHS av": 13.7,
+      "MHS 1m": 20.32,
+      "MHS 15m": 13.7,
+      "HS RT": 20.32,
+      "Factory GHS": 54735,
+      "Upfreq Complete": 0,
+      "Effective Chips": 215,
+      "PCB SN": "SKM3CSD7104716K90757",
+      "Chip Data": "H37A01-24051902BINVE6-197801C"
+    },
+    {
+      "Slot": 1,
+      "Temperature": 42.81,
+      "Chip Frequency": 162,
+      "MHS av": 15.01,
+      "MHS 1m": 21.73,
+      "MHS 15m": 15.01,
+      "HS RT": 21.73,
+      "Factory GHS": 58610,
+      "Upfreq Complete": 0,
+      "Effective Chips": 215,
+      "PCB SN": "SKM3CSD7104716K90760",
+      "Chip Data": "H37A01-24051902BINVE6-197801C"
+    },
+    {
+      "Slot": 2,
+      "Temperature": 42.62,
+      "Chip Frequency": 162,
+      "MHS av": 15.11,
+      "MHS 1m": 22.41,
+      "MHS 15m": 15.11,
+      "HS RT": 22.41,
+      "Factory GHS": 59069,
+      "Upfreq Complete": 0,
+      "Effective Chips": 215,
+      "PCB SN": "SKM3CSD7104716K91129",
+      "Chip Data": "H37A01-24051902BINVE6-197801C"
+    }
+  ],
+  "id": 1
+}

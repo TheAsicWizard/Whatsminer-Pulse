@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Hashboard Monitor</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: 'Segoe UI', system-ui, sans-serif; background: #0a0a0f; color: #e0e0e0; min-height: 100vh; padding: 20px; }
+  .header { display: flex; align-items: center; gap: 16px; margin-bottom: 24px; flex-wrap: wrap; }
+  .header h1 { font-size: 22px; color: #f5a623; font-weight: 700; }
+  .controls { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+  input { background: #1a1a2e; border: 1px solid #333; color: #e0e0e0; padding: 8px 12px; border-radius: 6px; font-size: 14px; width: 180px; }
+  input:focus { outline: none; border-color: #f5a623; }
+  button { background: #f5a623; color: #000; border: none; padding: 8px 18px; border-radius: 6px; font-size: 14px; font-weight: 600; cursor: pointer; }
+  button:hover { background: #e6951f; }
+  button.stop { background: #e74c3c; color: #fff; }
+  button.stop:hover { background: #c0392b; }
+  .status { font-size: 12px; color: #888; margin-left: 8px; }
+  .status.connected { color: #2ecc71; }
+  .status.error { color: #e74c3c; }
+  .miner-info { background: #12121f; border: 1px solid #222; border-radius: 10px; padding: 16px 20px; margin-bottom: 16px; }
+  .miner-info h2 { font-size: 16px; color: #ccc; margin-bottom: 10px; }
+  .summary-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 12px; }
+  .summary-item { background: #1a1a2e; border: 1px solid #282840; border-radius: 8px; padding: 10px 14px; }
+  .summary-item .label { font-size: 10px; text-transform: uppercase; color: #888; letter-spacing: 0.5px; }
+  .summary-item .value { font-size: 20px; font-weight: 700; color: #fff; margin-top: 2px; font-family: 'Consolas', monospace; }
+  .boards { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 16px; margin-top: 16px; }
+  .board-card { background: #12121f; border: 1px solid #222; border-radius: 10px; padding: 16px 20px; transition: border-color 0.3s; }
+  .board-card.healthy { border-color: #2ecc71; }
+  .board-card.warning { border-color: #f5a623; }
+  .board-card.critical { border-color: #e74c3c; }
+  .board-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+  .board-name { font-size: 18px; font-weight: 700; }
+  .board-status { font-size: 11px; padding: 3px 10px; border-radius: 12px; font-weight: 600; }
+  .board-status.healthy { background: rgba(46,204,113,0.15); color: #2ecc71; }
+  .board-status.warning { background: rgba(245,166,35,0.15); color: #f5a623; }
+  .board-status.critical { background: rgba(231,76,60,0.15); color: #e74c3c; }
+  .board-stats { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .board-stat .label { font-size: 10px; text-transform: uppercase; color: #888; letter-spacing: 0.5px; }
+  .board-stat .value { font-size: 16px; font-weight: 600; color: #fff; font-family: 'Consolas', monospace; }
+  .temp-bar { height: 4px; background: #222; border-radius: 2px; margin-top: 12px; overflow: hidden; }
+  .temp-bar-fill { height: 100%; border-radius: 2px; transition: width 0.5s, background 0.5s; }
+  .pcb-sn { font-size: 10px; color: #555; margin-top: 8px; font-family: monospace; }
+  .log { background: #0d0d18; border: 1px solid #1a1a2e; border-radius: 8px; padding: 12px; margin-top: 16px; max-height: 200px; overflow-y: auto; font-family: monospace; font-size: 11px; color: #666; }
+  .log .entry { padding: 2px 0; }
+  .log .entry.error { color: #e74c3c; }
+  .log .entry.ok { color: #2ecc71; }
+  .interval-select { background: #1a1a2e; border: 1px solid #333; color: #e0e0e0; padding: 8px; border-radius: 6px; font-size: 14px; }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>⛏ Hashboard Monitor</h1>
+  <div class="controls">
+    <input type="text" id="ip" placeholder="Miner IP" value="10.31.172.196">
+    <input type="text" id="port" placeholder="Port" value="4028" style="width:80px">
+    <select id="interval" class="interval-select">
+      <option value="3">3s</option>
+      <option value="5" selected>5s</option>
+      <option value="10">10s</option>
+      <option value="30">30s</option>
+    </select>
+    <button id="startBtn" onclick="togglePoll()">Start</button>
+    <span id="status" class="status">Not connected</span>
+  </div>
+</div>
+
+<div id="summarySection" class="miner-info" style="display:none">
+  <h2>Miner Summary</h2>
+  <div id="summaryGrid" class="summary-grid"></div>
+</div>
+
+<div id="boardsContainer" class="boards"></div>
+
+<div id="logBox" class="log"></div>
+
+<script>
+let polling = false;
+let timer = null;
+let pollCount = 0;
+
+function addLog(msg, type = '') {
+  const box = document.getElementById('logBox');
+  const entry = document.createElement('div');
+  entry.className = 'entry ' + type;
+  entry.textContent = new Date().toLocaleTimeString() + ' ' + msg;
+  box.prepend(entry);
+  if (box.children.length > 100) box.removeChild(box.lastChild);
+}
+
+function togglePoll() {
+  if (polling) {
+    polling = false;
+    clearTimeout(timer);
+    document.getElementById('startBtn').textContent = 'Start';
+    document.getElementById('startBtn').className = '';
+    document.getElementById('status').textContent = 'Stopped';
+    document.getElementById('status').className = 'status';
+    addLog('Polling stopped');
+  } else {
+    polling = true;
+    pollCount = 0;
+    document.getElementById('startBtn').textContent = 'Stop';
+    document.getElementById('startBtn').className = 'stop';
+    addLog('Polling started');
+    doPoll();
+  }
+}
+
+async function doPoll() {
+  if (!polling) return;
+  const ip = document.getElementById('ip').value;
+  const port = document.getElementById('port').value;
+  const interval = parseInt(document.getElementById('interval').value) * 1000;
+
+  document.getElementById('status').textContent = 'Polling...';
+  document.getElementById('status').className = 'status connected';
+
+  try {
+    const [summary, devs] = await Promise.all([
+      queryMiner(ip, port, 'summary'),
+      queryMiner(ip, port, 'edevs')
+    ]);
+
+    pollCount++;
+    renderSummary(summary);
+    renderBoards(devs);
+    addLog(`Poll #${pollCount} OK — ${(devs.DEVS||[]).length} boards`, 'ok');
+    document.getElementById('status').textContent = `Connected — Poll #${pollCount}`;
+  } catch (err) {
+    addLog('Error: ' + err.message, 'error');
+    document.getElementById('status').textContent = 'Error: ' + err.message;
+    document.getElementById('status').className = 'status error';
+  }
+
+  if (polling) timer = setTimeout(doPoll, interval);
+}
+
+function queryMiner(ip, port, command) {
+  return fetch(`http://${ip}:${port}`, {
+    method: 'POST',
+    body: JSON.stringify({ command }),
+  }).then(r => r.json()).catch(() => {
+    return new Promise((resolve, reject) => {
+      reject(new Error('Direct fetch failed — see note below'));
+    });
+  });
+}
+
+function renderSummary(data) {
+  const s = data?.SUMMARY?.[0] || data?.Msg || {};
+  const section = document.getElementById('summarySection');
+  section.style.display = 'block';
+  const grid = document.getElementById('summaryGrid');
+
+  const items = [
+    { label: 'Hashrate', value: formatHashrate(s['GHS av'] || s['MHS av'] || 0, s['GHS av'] ? 'GH' : 'MH') },
+    { label: 'Temperature', value: (s.Temperature || '—') + '°C' },
+    { label: 'Power', value: (s.Power || '—') + ' W' },
+    { label: 'Fan In', value: (s['Fan Speed In'] || s.FanSpeedIn || '—') + ' RPM' },
+    { label: 'Fan Out', value: (s['Fan Speed Out'] || s.FanSpeedOut || '—') + ' RPM' },
+    { label: 'Accepted', value: (s.Accepted || 0).toLocaleString() },
+    { label: 'Rejected', value: (s.Rejected || 0).toLocaleString() },
+    { label: 'Uptime', value: formatUptime(s.Elapsed || 0) },
+    { label: 'Power Mode', value: s['Power Mode'] || '—' },
+    { label: 'Factory GH/s', value: ((s['Factory GHS'] || 0) / 1000).toFixed(0) + ' TH/s' },
+  ];
+
+  grid.innerHTML = items.map(i => `<div class="summary-item"><div class="label">${i.label}</div><div class="value">${i.value}</div></div>`).join('');
+}
+
+function renderBoards(data) {
+  const boards = data?.DEVS || [];
+  const container = document.getElementById('boardsContainer');
+
+  container.innerHTML = boards.map((b, i) => {
+    const temp = b.Temperature || 0;
+    const status = temp > 80 ? 'critical' : temp > 65 ? 'warning' : 'healthy';
+    const statusLabel = temp > 80 ? 'CRITICAL' : temp > 65 ? 'WARNING' : 'HEALTHY';
+    const hsGH = (b['MHS av'] || 0) / 1000;
+    const hsRT = (b['HS RT'] || b['MHS 1m'] || 0) / 1000;
+    const factoryTH = ((b['Factory GHS'] || 0) / 1000).toFixed(1);
+    const chips = b['Effective Chips'] || '—';
+    const freq = b['Chip Frequency'] || '—';
+    const upfreq = b['Upfreq Complete'] || 0;
+    const tempPct = Math.min(100, (temp / 100) * 100);
+    const tempColor = temp > 80 ? '#e74c3c' : temp > 65 ? '#f5a623' : '#2ecc71';
+
+    return `
+      <div class="board-card ${status}">
+        <div class="board-header">
+          <span class="board-name">SM${b.Slot ?? i}</span>
+          <span class="board-status ${status}">${statusLabel}</span>
+        </div>
+        <div class="board-stats">
+          <div class="board-stat"><div class="label">Temperature</div><div class="value">${temp.toFixed(1)}°C</div></div>
+          <div class="board-stat"><div class="label">Frequency</div><div class="value">${freq} MHz</div></div>
+          <div class="board-stat"><div class="label">Hashrate (avg)</div><div class="value">${hsGH.toFixed(2)} GH/s</div></div>
+          <div class="board-stat"><div class="label">Hashrate (RT)</div><div class="value">${hsRT.toFixed(2)} GH/s</div></div>
+          <div class="board-stat"><div class="label">Factory GH/s</div><div class="value">${factoryTH} TH/s</div></div>
+          <div class="board-stat"><div class="label">Eff. Chips</div><div class="value">${chips}</div></div>
+          <div class="board-stat"><div class="label">Upfreq Done</div><div class="value">${upfreq ? 'Yes' : 'No'}</div></div>
+        </div>
+        <div class="temp-bar"><div class="temp-bar-fill" style="width:${tempPct}%;background:${tempColor}"></div></div>
+        <div class="pcb-sn">${b['PCB SN'] || ''}</div>
+      </div>
+    `;
+  }).join('');
+}
+
+function formatHashrate(val, unit) {
+  if (unit === 'GH') return (val / 1000).toFixed(2) + ' TH/s';
+  return (val / 1e6).toFixed(2) + ' TH/s';
+}
+
+function formatUptime(seconds) {
+  const d = Math.floor(seconds / 86400);
+  const h = Math.floor((seconds % 86400) / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
+  return d > 0 ? `${d}d ${h}h ${m}m` : `${h}h ${m}m`;
+}
+
+// Since browsers can't do raw TCP, we need a tiny proxy.
+// Override queryMiner to use a local WebSocket proxy or the app's API.
+// For standalone use, start the built-in proxy:
+let proxyPort = 3939;
+
+queryMiner = async function(ip, port, command) {
+  const resp = await fetch(`http://localhost:${proxyPort}/query`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ip, port: parseInt(port), command })
+  });
+  if (!resp.ok) throw new Error(await resp.text());
+  return resp.json();
+};
+
+document.getElementById('status').textContent = 'Ready — proxy on port ' + proxyPort;
+addLog('Hashboard Monitor ready. Proxy must be running on port ' + proxyPort);
+addLog('Start proxy: node hashboard-proxy.js');
+</script>
+</body>
+</html>

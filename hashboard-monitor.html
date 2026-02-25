@@ -24,8 +24,9 @@
   .summary-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 12px; }
   .summary-item { background: #1a1a2e; border: 1px solid #282840; border-radius: 8px; padding: 10px 14px; }
   .summary-item .label { font-size: 10px; text-transform: uppercase; color: #888; letter-spacing: 0.5px; }
-  .summary-item .value { font-size: 20px; font-weight: 700; color: #fff; margin-top: 2px; font-family: 'Consolas', monospace; }
-  .boards { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 16px; margin-top: 16px; }
+  .summary-item .value { font-size: 18px; font-weight: 700; color: #fff; margin-top: 2px; font-family: 'Consolas', monospace; }
+  .summary-item .value.small { font-size: 13px; }
+  .boards { display: grid; grid-template-columns: repeat(auto-fill, minmax(360px, 1fr)); gap: 16px; margin-top: 16px; }
   .board-card { background: #12121f; border: 1px solid #222; border-radius: 10px; padding: 16px 20px; transition: border-color 0.3s; }
   .board-card.healthy { border-color: #2ecc71; }
   .board-card.warning { border-color: #f5a623; }
@@ -39,20 +40,27 @@
   .board-stats { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
   .board-stat .label { font-size: 10px; text-transform: uppercase; color: #888; letter-spacing: 0.5px; }
   .board-stat .value { font-size: 16px; font-weight: 600; color: #fff; font-family: 'Consolas', monospace; }
+  .board-meta { margin-top: 10px; padding-top: 10px; border-top: 1px solid #1e1e35; }
+  .board-meta-row { display: flex; justify-content: space-between; align-items: center; padding: 3px 0; }
+  .board-meta-row .label { font-size: 10px; text-transform: uppercase; color: #666; }
+  .board-meta-row .value { font-size: 12px; color: #aaa; font-family: 'Consolas', monospace; }
   .temp-bar { height: 4px; background: #222; border-radius: 2px; margin-top: 12px; overflow: hidden; }
   .temp-bar-fill { height: 100%; border-radius: 2px; transition: width 0.5s, background 0.5s; }
-  .pcb-sn { font-size: 10px; color: #555; margin-top: 8px; font-family: monospace; }
   .log { background: #0d0d18; border: 1px solid #1a1a2e; border-radius: 8px; padding: 12px; margin-top: 16px; max-height: 200px; overflow-y: auto; font-family: monospace; font-size: 11px; color: #666; }
   .log .entry { padding: 2px 0; }
   .log .entry.error { color: #e74c3c; }
   .log .entry.ok { color: #2ecc71; }
   .interval-select { background: #1a1a2e; border: 1px solid #333; color: #e0e0e0; padding: 8px; border-radius: 6px; font-size: 14px; }
+  .raw-section { margin-top: 16px; }
+  .raw-toggle { background: #1a1a2e; border: 1px solid #333; color: #888; padding: 6px 14px; border-radius: 6px; font-size: 12px; cursor: pointer; }
+  .raw-toggle:hover { color: #e0e0e0; border-color: #555; }
+  .raw-data { display: none; background: #0d0d18; border: 1px solid #1a1a2e; border-radius: 8px; padding: 12px; margin-top: 8px; max-height: 400px; overflow-y: auto; font-family: monospace; font-size: 11px; color: #888; white-space: pre-wrap; word-break: break-all; }
 </style>
 </head>
 <body>
 
 <div class="header">
-  <h1>⛏ Hashboard Monitor</h1>
+  <h1>Hashboard Monitor</h1>
   <div class="controls">
     <input type="text" id="ip" placeholder="Miner IP" value="10.31.172.196">
     <input type="text" id="port" placeholder="Port" value="4028" style="width:80px">
@@ -67,6 +75,11 @@
   </div>
 </div>
 
+<div id="minerInfoSection" class="miner-info" style="display:none">
+  <h2>Miner Info</h2>
+  <div id="minerInfoGrid" class="summary-grid"></div>
+</div>
+
 <div id="summarySection" class="miner-info" style="display:none">
   <h2>Miner Summary</h2>
   <div id="summaryGrid" class="summary-grid"></div>
@@ -74,12 +87,18 @@
 
 <div id="boardsContainer" class="boards"></div>
 
+<div class="raw-section">
+  <button class="raw-toggle" onclick="toggleRaw()">Show Raw JSON</button>
+  <div id="rawData" class="raw-data"></div>
+</div>
+
 <div id="logBox" class="log"></div>
 
 <script>
 let polling = false;
 let timer = null;
 let pollCount = 0;
+let lastRawData = {};
 
 function addLog(msg, type = '') {
   const box = document.getElementById('logBox');
@@ -88,6 +107,16 @@ function addLog(msg, type = '') {
   entry.textContent = new Date().toLocaleTimeString() + ' ' + msg;
   box.prepend(entry);
   if (box.children.length > 100) box.removeChild(box.lastChild);
+}
+
+function toggleRaw() {
+  const el = document.getElementById('rawData');
+  if (el.style.display === 'block') {
+    el.style.display = 'none';
+  } else {
+    el.style.display = 'block';
+    el.textContent = JSON.stringify(lastRawData, null, 2);
+  }
 }
 
 function togglePoll() {
@@ -119,16 +148,26 @@ async function doPoll() {
   document.getElementById('status').className = 'status connected';
 
   try {
-    const [summary, devs] = await Promise.all([
+    const [summary, devs, devdetails, minerInfo] = await Promise.all([
       queryMiner(ip, port, 'summary'),
-      queryMiner(ip, port, 'edevs')
+      queryMiner(ip, port, 'edevs'),
+      queryMiner(ip, port, 'devdetails').catch(() => null),
+      pollCount === 0 ? queryMiner(ip, port, 'get_miner_info').catch(() => null) : Promise.resolve(null)
     ]);
 
     pollCount++;
+    lastRawData = { summary, edevs: devs, devdetails, get_miner_info: minerInfo };
+
+    if (minerInfo) renderMinerInfo(minerInfo);
     renderSummary(summary);
-    renderBoards(devs);
-    addLog(`Poll #${pollCount} OK — ${(devs.DEVS||[]).length} boards`, 'ok');
-    document.getElementById('status').textContent = `Connected — Poll #${pollCount}`;
+    renderBoards(devs, devdetails);
+    addLog('Poll #' + pollCount + ' OK - ' + (devs.DEVS||[]).length + ' boards', 'ok');
+    document.getElementById('status').textContent = 'Connected - Poll #' + pollCount;
+
+    const rawEl = document.getElementById('rawData');
+    if (rawEl.style.display === 'block') {
+      rawEl.textContent = JSON.stringify(lastRawData, null, 2);
+    }
   } catch (err) {
     addLog('Error: ' + err.message, 'error');
     document.getElementById('status').textContent = 'Error: ' + err.message;
@@ -138,15 +177,40 @@ async function doPoll() {
   if (polling) timer = setTimeout(doPoll, interval);
 }
 
+let proxyPort = 3939;
+
 function queryMiner(ip, port, command) {
-  return fetch(`http://${ip}:${port}`, {
+  return fetch('http://localhost:' + proxyPort + '/query', {
     method: 'POST',
-    body: JSON.stringify({ command }),
-  }).then(r => r.json()).catch(() => {
-    return new Promise((resolve, reject) => {
-      reject(new Error('Direct fetch failed — see note below'));
-    });
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ip, port: parseInt(port), command })
+  }).then(r => {
+    if (!r.ok) return r.text().then(t => { throw new Error(t); });
+    return r.json();
   });
+}
+
+function renderMinerInfo(data) {
+  const info = data?.Msg || data?.msg || data;
+  if (!info || typeof info !== 'object') return;
+
+  const section = document.getElementById('minerInfoSection');
+  section.style.display = 'block';
+
+  const items = [
+    { label: 'Model', value: info.miner_type || info.minertype || info.Model || '-' },
+    { label: 'Firmware', value: info.fw_ver || info.firmware || '-' },
+    { label: 'Compile Time', value: info.CompileTime || info.compile_time || '-' },
+    { label: 'MAC', value: info.mac || info.Mac || '-' },
+    { label: 'IP', value: info.ip || info.Ip || document.getElementById('ip').value },
+    { label: 'Serial', value: info.sn || info.Serial || '-' },
+    { label: 'Network Type', value: info.nettype || info.net_type || '-' },
+    { label: 'DNS', value: info.dns || info.Dns || '-' },
+  ];
+
+  document.getElementById('minerInfoGrid').innerHTML = items
+    .filter(i => i.value && i.value !== '-')
+    .map(i => '<div class="summary-item"><div class="label">' + i.label + '</div><div class="value small">' + i.value + '</div></div>').join('');
 }
 
 function renderSummary(data) {
@@ -155,24 +219,38 @@ function renderSummary(data) {
   section.style.display = 'block';
   const grid = document.getElementById('summaryGrid');
 
+  const ghsAv = s['GHS av'] || 0;
+  const mhsAv = s['MHS av'] || 0;
+  let hashrate;
+  if (ghsAv > 0) {
+    hashrate = (ghsAv / 1000).toFixed(2) + ' TH/s';
+  } else if (mhsAv > 0) {
+    hashrate = (mhsAv / 1e6).toFixed(2) + ' TH/s';
+  } else {
+    hashrate = '0.00 TH/s';
+  }
+
   const items = [
-    { label: 'Hashrate', value: formatHashrate(s['GHS av'] || s['MHS av'] || 0, s['GHS av'] ? 'GH' : 'MH') },
-    { label: 'Temperature', value: (s.Temperature || '—') + '°C' },
-    { label: 'Power', value: (s.Power || '—') + ' W' },
-    { label: 'Fan In', value: (s['Fan Speed In'] || s.FanSpeedIn || '—') + ' RPM' },
-    { label: 'Fan Out', value: (s['Fan Speed Out'] || s.FanSpeedOut || '—') + ' RPM' },
+    { label: 'Hashrate', value: hashrate },
+    { label: 'Temperature', value: (s.Temperature || '-') + ' C' },
+    { label: 'Power', value: (s.Power || s['Power Consumption'] || '-') + ' W' },
+    { label: 'Fan In', value: (s['Fan Speed In'] || s.FanSpeedIn || '-') + ' RPM' },
+    { label: 'Fan Out', value: (s['Fan Speed Out'] || s.FanSpeedOut || '-') + ' RPM' },
     { label: 'Accepted', value: (s.Accepted || 0).toLocaleString() },
     { label: 'Rejected', value: (s.Rejected || 0).toLocaleString() },
+    { label: 'HW Errors', value: (s['Hardware Errors'] || s.HardwareErrors || 0).toLocaleString() },
     { label: 'Uptime', value: formatUptime(s.Elapsed || 0) },
-    { label: 'Power Mode', value: s['Power Mode'] || '—' },
+    { label: 'Power Mode', value: s['Power Mode'] || '-' },
     { label: 'Factory GH/s', value: ((s['Factory GHS'] || 0) / 1000).toFixed(0) + ' TH/s' },
+    { label: 'Env Temp', value: (s['Env Temp'] || s.env_temp || '-') + ' C' },
   ];
 
-  grid.innerHTML = items.map(i => `<div class="summary-item"><div class="label">${i.label}</div><div class="value">${i.value}</div></div>`).join('');
+  grid.innerHTML = items.map(i => '<div class="summary-item"><div class="label">' + i.label + '</div><div class="value">' + i.value + '</div></div>').join('');
 }
 
-function renderBoards(data) {
+function renderBoards(data, detailsData) {
   const boards = data?.DEVS || [];
+  const details = detailsData?.DEVDETAILS || [];
   const container = document.getElementById('boardsContainer');
 
   container.innerHTML = boards.map((b, i) => {
@@ -181,63 +259,59 @@ function renderBoards(data) {
     const statusLabel = temp > 80 ? 'CRITICAL' : temp > 65 ? 'WARNING' : 'HEALTHY';
     const hsGH = (b['MHS av'] || 0) / 1000;
     const hsRT = (b['HS RT'] || b['MHS 1m'] || 0) / 1000;
+    const hs15m = (b['MHS 15m'] || 0) / 1000;
     const factoryTH = ((b['Factory GHS'] || 0) / 1000).toFixed(1);
-    const chips = b['Effective Chips'] || '—';
-    const freq = b['Chip Frequency'] || '—';
+    const chips = b['Effective Chips'] || '-';
+    const freq = b['Chip Frequency'] || '-';
     const upfreq = b['Upfreq Complete'] || 0;
+    const chipData = b['Chip Data'] || '-';
+    const pcbSN = b['PCB SN'] || '';
     const tempPct = Math.min(100, (temp / 100) * 100);
     const tempColor = temp > 80 ? '#e74c3c' : temp > 65 ? '#f5a623' : '#2ecc71';
 
-    return `
-      <div class="board-card ${status}">
-        <div class="board-header">
-          <span class="board-name">SM${b.Slot ?? i}</span>
-          <span class="board-status ${status}">${statusLabel}</span>
-        </div>
-        <div class="board-stats">
-          <div class="board-stat"><div class="label">Temperature</div><div class="value">${temp.toFixed(1)}°C</div></div>
-          <div class="board-stat"><div class="label">Frequency</div><div class="value">${freq} MHz</div></div>
-          <div class="board-stat"><div class="label">Hashrate (avg)</div><div class="value">${hsGH.toFixed(2)} GH/s</div></div>
-          <div class="board-stat"><div class="label">Hashrate (RT)</div><div class="value">${hsRT.toFixed(2)} GH/s</div></div>
-          <div class="board-stat"><div class="label">Factory GH/s</div><div class="value">${factoryTH} TH/s</div></div>
-          <div class="board-stat"><div class="label">Eff. Chips</div><div class="value">${chips}</div></div>
-          <div class="board-stat"><div class="label">Upfreq Done</div><div class="value">${upfreq ? 'Yes' : 'No'}</div></div>
-        </div>
-        <div class="temp-bar"><div class="temp-bar-fill" style="width:${tempPct}%;background:${tempColor}"></div></div>
-        <div class="pcb-sn">${b['PCB SN'] || ''}</div>
-      </div>
-    `;
-  }).join('');
-}
+    const detail = details.find(d => d.Slot === b.Slot) || {};
+    const driver = detail.Driver || '-';
+    const model = detail.Model || detail.Name || '-';
 
-function formatHashrate(val, unit) {
-  if (unit === 'GH') return (val / 1000).toFixed(2) + ' TH/s';
-  return (val / 1e6).toFixed(2) + ' TH/s';
+    let chipType = '-';
+    if (chipData && chipData !== '-') {
+      chipType = chipData;
+    }
+
+    return '<div class="board-card ' + status + '">' +
+      '<div class="board-header">' +
+        '<span class="board-name">SM' + (b.Slot ?? i) + '</span>' +
+        '<span class="board-status ' + status + '">' + statusLabel + '</span>' +
+      '</div>' +
+      '<div class="board-stats">' +
+        '<div class="board-stat"><div class="label">Temperature</div><div class="value">' + temp.toFixed(1) + ' C</div></div>' +
+        '<div class="board-stat"><div class="label">Frequency</div><div class="value">' + freq + ' MHz</div></div>' +
+        '<div class="board-stat"><div class="label">Hashrate (avg)</div><div class="value">' + hsGH.toFixed(2) + ' GH/s</div></div>' +
+        '<div class="board-stat"><div class="label">Hashrate (RT)</div><div class="value">' + hsRT.toFixed(2) + ' GH/s</div></div>' +
+        '<div class="board-stat"><div class="label">Hashrate (15m)</div><div class="value">' + hs15m.toFixed(2) + ' GH/s</div></div>' +
+        '<div class="board-stat"><div class="label">Factory GH/s</div><div class="value">' + factoryTH + ' TH/s</div></div>' +
+        '<div class="board-stat"><div class="label">Eff. Chips</div><div class="value">' + chips + '</div></div>' +
+        '<div class="board-stat"><div class="label">Upfreq Done</div><div class="value">' + (upfreq ? 'Yes' : 'No') + '</div></div>' +
+      '</div>' +
+      '<div class="board-meta">' +
+        '<div class="board-meta-row"><span class="label">Chip Data</span><span class="value">' + chipType + '</span></div>' +
+        '<div class="board-meta-row"><span class="label">PCB S/N</span><span class="value">' + pcbSN + '</span></div>' +
+        (model !== '-' ? '<div class="board-meta-row"><span class="label">Model</span><span class="value">' + model + '</span></div>' : '') +
+        (driver !== '-' ? '<div class="board-meta-row"><span class="label">Driver</span><span class="value">' + driver + '</span></div>' : '') +
+      '</div>' +
+      '<div class="temp-bar"><div class="temp-bar-fill" style="width:' + tempPct + '%;background:' + tempColor + '"></div></div>' +
+    '</div>';
+  }).join('');
 }
 
 function formatUptime(seconds) {
   const d = Math.floor(seconds / 86400);
   const h = Math.floor((seconds % 86400) / 3600);
   const m = Math.floor((seconds % 3600) / 60);
-  return d > 0 ? `${d}d ${h}h ${m}m` : `${h}h ${m}m`;
+  return d > 0 ? d + 'd ' + h + 'h ' + m + 'm' : h + 'h ' + m + 'm';
 }
 
-// Since browsers can't do raw TCP, we need a tiny proxy.
-// Override queryMiner to use a local WebSocket proxy or the app's API.
-// For standalone use, start the built-in proxy:
-let proxyPort = 3939;
-
-queryMiner = async function(ip, port, command) {
-  const resp = await fetch(`http://localhost:${proxyPort}/query`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ ip, port: parseInt(port), command })
-  });
-  if (!resp.ok) throw new Error(await resp.text());
-  return resp.json();
-};
-
-document.getElementById('status').textContent = 'Ready — proxy on port ' + proxyPort;
+document.getElementById('status').textContent = 'Ready - proxy on port ' + proxyPort;
 addLog('Hashboard Monitor ready. Proxy must be running on port ' + proxyPort);
 addLog('Start proxy: node hashboard-proxy.js');
 </script>

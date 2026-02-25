@@ -1,0 +1,119 @@
+{
+  "summary": {
+    "STATUS": "S",
+    "When": 1772042752,
+    "Code": 131,
+    "Msg": {
+      "Elapsed": 884.010009765625,
+      "MHS av": 111337976,
+      "MHS 1m": 140544208,
+      "MHS 15m": 111337976,
+      "HS RT": 140544208,
+      "freq_avg": 358.30596923828125,
+      "Fan Speed In": 3764,
+      "Fan Speed Out": 3735,
+      "Power": 3173.4533333333334,
+      "Power Rate": 22.191356658935547,
+      "Pool Rejected%": 0,
+      "Uptime": 911,
+      "Hash Stable": "false",
+      "Hash Stable Cost Seconds": 0,
+      "Target Freq": 0,
+      "Env Temp": 28.687,
+      "Power Mode": "Normal",
+      "Factory GHS": 165848,
+      "Power Limit": 3600,
+      "Chip Temp Min": 54.443180084228516,
+      "Chip Temp Max": 84.19318389892578,
+      "Chip Temp Avg": 69.33332824707031,
+      "Debug": "37.7 3.0/0.5 3.0/0.2 3.0/0.5 ",
+      "Btminer Fast Boot": "disable"
+    },
+    "Description": ""
+  },
+  "edevs": {
+    "STATUS": [
+      {
+        "STATUS": "S",
+        "Msg": "3 ASC(s)"
+      }
+    ],
+    "DEVS": [
+      {
+        "Slot": 0,
+        "Temperature": 73.88,
+        "Chip Frequency": 362,
+        "MHS av": 37.9,
+        "MHS 1m": 45.61,
+        "MHS 15m": 37.9,
+        "HS RT": 45.61,
+        "Factory GHS": 56792,
+        "Upfreq Complete": 0,
+        "Effective Chips": 215,
+        "PCB SN": "SKM3CSD7104715KA1227",
+        "Chip Data": "H37A02-24050704BINVE5-197802C"
+      },
+      {
+        "Slot": 1,
+        "Temperature": 78.19,
+        "Chip Frequency": 373,
+        "MHS av": 38.17,
+        "MHS 1m": 50.13,
+        "MHS 15m": 38.17,
+        "HS RT": 50.13,
+        "Factory GHS": 52130,
+        "Upfreq Complete": 0,
+        "Effective Chips": 215,
+        "PCB SN": "SKM3CSD7104614B74283",
+        "Chip Data": "KAAP334-2415BINVE5-197802C"
+      },
+      {
+        "Slot": 2,
+        "Temperature": 72.62,
+        "Chip Frequency": 338,
+        "MHS av": 35.27,
+        "MHS 1m": 44.8,
+        "MHS 15m": 35.27,
+        "HS RT": 44.8,
+        "Factory GHS": 56926,
+        "Upfreq Complete": 0,
+        "Effective Chips": 215,
+        "PCB SN": "SKM3CSD7104522K92245",
+        "Chip Data": "H3EA07-24040917BINVE5-197804B"
+      }
+    ],
+    "id": 1
+  },
+  "devdetails": {
+    "STATUS": "E",
+    "When": 1772042752,
+    "Code": 132,
+    "Msg": "This command is deprecated.",
+    "Description": ""
+  },
+  "get_miner_info": {
+    "STATUS": "S",
+    "When": 1772042752,
+    "Code": 131,
+    "Msg": {
+      "ntp": [
+        "0.cn.pool.ntp.org",
+        "0.openwrt.pool.ntp.org",
+        "0.asia.pool.ntp.org",
+        "0.pool.ntp.org"
+      ],
+      "ip": "10.21.29.68",
+      "proto": "dhcp",
+      "netmask": "255.255.255.0",
+      "gateway": "10.21.29.254",
+      "dns": "10.0.2.15",
+      "hostname": "WhatsMiner",
+      "mac": "CE:0C:1D:00:2A:53",
+      "ledstat": "auto",
+      "minersn": "",
+      "powersn": "12245104509",
+      "upfreq_speed": "0"
+    },
+    "Description": ""
+  }
+}

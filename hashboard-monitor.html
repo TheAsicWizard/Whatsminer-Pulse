@@ -7,18 +7,45 @@
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
   body { font-family: 'Segoe UI', system-ui, sans-serif; background: #0a0a0f; color: #e0e0e0; min-height: 100vh; padding: 20px; }
-  .header { display: flex; align-items: center; gap: 16px; margin-bottom: 24px; flex-wrap: wrap; }
-  .header h1 { font-size: 22px; color: #f5a623; font-weight: 700; }
-  .controls { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
-  input { background: #1a1a2e; border: 1px solid #333; color: #e0e0e0; padding: 8px 12px; border-radius: 6px; font-size: 14px; width: 180px; }
+  h1 { font-size: 22px; color: #f5a623; font-weight: 700; margin-bottom: 20px; }
+  .tabs { display: flex; gap: 0; margin-bottom: 20px; border-bottom: 1px solid #222; }
+  .tab { padding: 10px 24px; cursor: pointer; color: #888; font-size: 14px; font-weight: 600; border-bottom: 2px solid transparent; }
+  .tab:hover { color: #ccc; }
+  .tab.active { color: #f5a623; border-bottom-color: #f5a623; }
+  .view { display: none; }
+  .view.active { display: block; }
+  input, select { background: #1a1a2e; border: 1px solid #333; color: #e0e0e0; padding: 8px 12px; border-radius: 6px; font-size: 14px; }
   input:focus { outline: none; border-color: #f5a623; }
   button { background: #f5a623; color: #000; border: none; padding: 8px 18px; border-radius: 6px; font-size: 14px; font-weight: 600; cursor: pointer; }
   button:hover { background: #e6951f; }
   button.stop { background: #e74c3c; color: #fff; }
   button.stop:hover { background: #c0392b; }
-  .status { font-size: 12px; color: #888; margin-left: 8px; }
-  .status.connected { color: #2ecc71; }
-  .status.error { color: #e74c3c; }
+  button.secondary { background: #1a1a2e; color: #ccc; border: 1px solid #333; }
+  button.secondary:hover { background: #252545; border-color: #555; }
+  .controls { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 16px; }
+  .status-text { font-size: 12px; color: #888; margin-left: 8px; }
+  .status-text.ok { color: #2ecc71; }
+  .status-text.err { color: #e74c3c; }
+
+  .progress-bar { height: 6px; background: #1a1a2e; border-radius: 3px; margin: 12px 0; overflow: hidden; }
+  .progress-bar-fill { height: 100%; background: #f5a623; border-radius: 3px; transition: width 0.3s; }
+  .progress-info { font-size: 12px; color: #888; margin-bottom: 12px; }
+
+  .scan-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 12px; }
+  .scan-card { background: #12121f; border: 1px solid #222; border-radius: 10px; padding: 14px 18px; cursor: pointer; transition: border-color 0.2s, transform 0.1s; }
+  .scan-card:hover { border-color: #f5a623; transform: translateY(-1px); }
+  .scan-card.healthy { border-left: 3px solid #2ecc71; }
+  .scan-card.warning { border-left: 3px solid #f5a623; }
+  .scan-card.critical { border-left: 3px solid #e74c3c; }
+  .scan-card-ip { font-size: 16px; font-weight: 700; font-family: 'Consolas', monospace; color: #fff; margin-bottom: 8px; }
+  .scan-card-stats { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px; }
+  .scan-card-stat .label { font-size: 9px; text-transform: uppercase; color: #666; }
+  .scan-card-stat .value { font-size: 14px; font-weight: 600; color: #ccc; font-family: 'Consolas', monospace; }
+  .scan-count { font-size: 14px; color: #f5a623; font-weight: 600; margin-bottom: 12px; }
+
+  .back-btn { display: inline-flex; align-items: center; gap: 6px; background: none; border: 1px solid #333; color: #888; padding: 6px 14px; border-radius: 6px; font-size: 13px; cursor: pointer; margin-bottom: 16px; }
+  .back-btn:hover { color: #e0e0e0; border-color: #555; }
+
   .miner-info { background: #12121f; border: 1px solid #222; border-radius: 10px; padding: 16px 20px; margin-bottom: 16px; }
   .miner-info h2 { font-size: 16px; color: #ccc; margin-bottom: 10px; }
   .summary-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 12px; }
@@ -46,274 +73,462 @@
   .board-meta-row .value { font-size: 12px; color: #aaa; font-family: 'Consolas', monospace; }
   .temp-bar { height: 4px; background: #222; border-radius: 2px; margin-top: 12px; overflow: hidden; }
   .temp-bar-fill { height: 100%; border-radius: 2px; transition: width 0.5s, background 0.5s; }
-  .log { background: #0d0d18; border: 1px solid #1a1a2e; border-radius: 8px; padding: 12px; margin-top: 16px; max-height: 200px; overflow-y: auto; font-family: monospace; font-size: 11px; color: #666; }
+  .log { background: #0d0d18; border: 1px solid #1a1a2e; border-radius: 8px; padding: 12px; margin-top: 16px; max-height: 150px; overflow-y: auto; font-family: monospace; font-size: 11px; color: #666; }
   .log .entry { padding: 2px 0; }
   .log .entry.error { color: #e74c3c; }
   .log .entry.ok { color: #2ecc71; }
-  .interval-select { background: #1a1a2e; border: 1px solid #333; color: #e0e0e0; padding: 8px; border-radius: 6px; font-size: 14px; }
   .raw-section { margin-top: 16px; }
   .raw-toggle { background: #1a1a2e; border: 1px solid #333; color: #888; padding: 6px 14px; border-radius: 6px; font-size: 12px; cursor: pointer; }
   .raw-toggle:hover { color: #e0e0e0; border-color: #555; }
   .raw-data { display: none; background: #0d0d18; border: 1px solid #1a1a2e; border-radius: 8px; padding: 12px; margin-top: 8px; max-height: 400px; overflow-y: auto; font-family: monospace; font-size: 11px; color: #888; white-space: pre-wrap; word-break: break-all; }
+  .detail-ip { font-size: 20px; font-weight: 700; color: #f5a623; font-family: 'Consolas', monospace; margin-bottom: 16px; }
+  .detail-poll-controls { display: flex; gap: 10px; align-items: center; margin-bottom: 16px; }
 </style>
 </head>
 <body>
 
-<div class="header">
-  <h1>Hashboard Monitor</h1>
+<h1>Hashboard Monitor</h1>
+
+<div class="tabs">
+  <div class="tab active" onclick="switchTab('scan')">Scan Network</div>
+  <div class="tab" onclick="switchTab('single')">Single Miner</div>
+</div>
+
+<!-- SCAN VIEW -->
+<div id="scanView" class="view active">
   <div class="controls">
-    <input type="text" id="ip" placeholder="Miner IP" value="10.31.172.196">
-    <input type="text" id="port" placeholder="Port" value="4028" style="width:80px">
-    <select id="interval" class="interval-select">
-      <option value="3">3s</option>
-      <option value="5" selected>5s</option>
-      <option value="10">10s</option>
-      <option value="30">30s</option>
-    </select>
-    <button id="startBtn" onclick="togglePoll()">Start</button>
-    <span id="status" class="status">Not connected</span>
+    <input type="text" id="subnet" placeholder="10.31.172.0/24" value="10.31.172.0/24" style="width:220px">
+    <input type="text" id="scanPort" placeholder="Port" value="4028" style="width:80px">
+    <button id="scanBtn" onclick="startScan()">Scan</button>
+    <span id="scanStatus" class="status-text"></span>
   </div>
+  <div id="scanProgress" style="display:none">
+    <div class="progress-bar"><div id="scanProgressFill" class="progress-bar-fill" style="width:0%"></div></div>
+    <div id="scanProgressInfo" class="progress-info"></div>
+  </div>
+  <div id="scanCount" class="scan-count" style="display:none"></div>
+  <div id="scanResults" class="scan-grid"></div>
 </div>
 
-<div id="minerInfoSection" class="miner-info" style="display:none">
-  <h2>Miner Info</h2>
-  <div id="minerInfoGrid" class="summary-grid"></div>
+<!-- SINGLE MINER VIEW -->
+<div id="singleView" class="view">
+  <div class="controls">
+    <input type="text" id="singleIp" placeholder="Miner IP" value="10.31.172.196" style="width:180px">
+    <input type="text" id="singlePort" placeholder="Port" value="4028" style="width:80px">
+    <select id="singleInterval">
+      <option value="3">3s</option><option value="5" selected>5s</option><option value="10">10s</option><option value="30">30s</option>
+    </select>
+    <button id="singleStartBtn" onclick="toggleSinglePoll()">Start</button>
+    <span id="singleStatus" class="status-text">Ready</span>
+  </div>
+  <div id="singleMinerInfo" class="miner-info" style="display:none"><h2>Miner Info</h2><div id="singleMinerInfoGrid" class="summary-grid"></div></div>
+  <div id="singleSummary" class="miner-info" style="display:none"><h2>Miner Summary</h2><div id="singleSummaryGrid" class="summary-grid"></div></div>
+  <div id="singleBoards" class="boards"></div>
+  <div class="raw-section"><button class="raw-toggle" onclick="toggleRaw('singleRaw')">Show Raw JSON</button><div id="singleRaw" class="raw-data"></div></div>
 </div>
 
-<div id="summarySection" class="miner-info" style="display:none">
-  <h2>Miner Summary</h2>
-  <div id="summaryGrid" class="summary-grid"></div>
-</div>
-
-<div id="boardsContainer" class="boards"></div>
-
-<div class="raw-section">
-  <button class="raw-toggle" onclick="toggleRaw()">Show Raw JSON</button>
-  <div id="rawData" class="raw-data"></div>
+<!-- DETAIL VIEW (from scan click) -->
+<div id="detailView" class="view">
+  <button class="back-btn" onclick="backToScan()">&#8592; Back to Scan Results</button>
+  <div id="detailIp" class="detail-ip"></div>
+  <div class="detail-poll-controls">
+    <select id="detailInterval">
+      <option value="3">3s</option><option value="5" selected>5s</option><option value="10">10s</option><option value="30">30s</option>
+    </select>
+    <button id="detailPollBtn" onclick="toggleDetailPoll()">Start Polling</button>
+    <span id="detailStatus" class="status-text"></span>
+  </div>
+  <div id="detailMinerInfo" class="miner-info" style="display:none"><h2>Miner Info</h2><div id="detailMinerInfoGrid" class="summary-grid"></div></div>
+  <div id="detailSummary" class="miner-info" style="display:none"><h2>Miner Summary</h2><div id="detailSummaryGrid" class="summary-grid"></div></div>
+  <div id="detailBoards" class="boards"></div>
+  <div class="raw-section"><button class="raw-toggle" onclick="toggleRaw('detailRaw')">Show Raw JSON</button><div id="detailRaw" class="raw-data"></div></div>
 </div>
 
 <div id="logBox" class="log"></div>
 
 <script>
-let polling = false;
-let timer = null;
-let pollCount = 0;
-let lastRawData = {};
+var PROXY = 'http://localhost:3939';
+var scanTimer = null;
+var singlePolling = false, singleTimer = null, singlePollCount = 0, singleRawData = {};
+var detailPolling = false, detailTimer = null, detailPollCount = 0, detailRawData = {}, detailIp = '', detailPort = 4028;
 
-function addLog(msg, type = '') {
-  const box = document.getElementById('logBox');
-  const entry = document.createElement('div');
-  entry.className = 'entry ' + type;
+function addLog(msg, type) {
+  var box = document.getElementById('logBox');
+  var entry = document.createElement('div');
+  entry.className = 'entry ' + (type || '');
   entry.textContent = new Date().toLocaleTimeString() + ' ' + msg;
   box.prepend(entry);
   if (box.children.length > 100) box.removeChild(box.lastChild);
 }
 
-function toggleRaw() {
-  const el = document.getElementById('rawData');
-  if (el.style.display === 'block') {
-    el.style.display = 'none';
-  } else {
+function switchTab(name) {
+  document.querySelectorAll('.tab').forEach(function(t, i) {
+    t.classList.toggle('active', (i === 0 && name === 'scan') || (i === 1 && name === 'single'));
+  });
+  document.getElementById('scanView').classList.toggle('active', name === 'scan');
+  document.getElementById('singleView').classList.toggle('active', name === 'single');
+  document.getElementById('detailView').classList.toggle('active', false);
+}
+
+function showDetail(ip, port) {
+  detailIp = ip;
+  detailPort = port;
+  detailPollCount = 0;
+  document.getElementById('scanView').classList.remove('active');
+  document.getElementById('singleView').classList.remove('active');
+  document.getElementById('detailView').classList.add('active');
+  document.getElementById('detailIp').textContent = ip;
+  document.getElementById('detailMinerInfo').style.display = 'none';
+  document.getElementById('detailSummary').style.display = 'none';
+  document.getElementById('detailBoards').innerHTML = '';
+  document.querySelectorAll('.tab').forEach(function(t) { t.classList.remove('active'); });
+  fetchDetailOnce();
+}
+
+function backToScan() {
+  stopDetailPoll();
+  document.getElementById('detailView').classList.remove('active');
+  document.getElementById('scanView').classList.add('active');
+  document.querySelectorAll('.tab')[0].classList.add('active');
+}
+
+function toggleRaw(id) {
+  var el = document.getElementById(id);
+  if (el.style.display === 'block') { el.style.display = 'none'; }
+  else {
     el.style.display = 'block';
-    el.textContent = JSON.stringify(lastRawData, null, 2);
+    var data = id === 'singleRaw' ? singleRawData : detailRawData;
+    el.textContent = JSON.stringify(data, null, 2);
   }
 }
 
-function togglePoll() {
-  if (polling) {
-    polling = false;
-    clearTimeout(timer);
-    document.getElementById('startBtn').textContent = 'Start';
-    document.getElementById('startBtn').className = '';
-    document.getElementById('status').textContent = 'Stopped';
-    document.getElementById('status').className = 'status';
-    addLog('Polling stopped');
-  } else {
-    polling = true;
-    pollCount = 0;
-    document.getElementById('startBtn').textContent = 'Stop';
-    document.getElementById('startBtn').className = 'stop';
-    addLog('Polling started');
-    doPoll();
-  }
-}
-
-async function doPoll() {
-  if (!polling) return;
-  const ip = document.getElementById('ip').value;
-  const port = document.getElementById('port').value;
-  const interval = parseInt(document.getElementById('interval').value) * 1000;
-
-  document.getElementById('status').textContent = 'Polling...';
-  document.getElementById('status').className = 'status connected';
-
-  try {
-    const [summary, devs, devdetails, minerInfo] = await Promise.all([
-      queryMiner(ip, port, 'summary'),
-      queryMiner(ip, port, 'edevs'),
-      queryMiner(ip, port, 'devdetails').catch(() => null),
-      pollCount === 0 ? queryMiner(ip, port, 'get_miner_info').catch(() => null) : Promise.resolve(null)
-    ]);
-
-    pollCount++;
-    lastRawData = { summary, edevs: devs, devdetails, get_miner_info: minerInfo };
-
-    if (minerInfo) renderMinerInfo(minerInfo);
-    renderSummary(summary);
-    renderBoards(devs, devdetails);
-    addLog('Poll #' + pollCount + ' OK - ' + (devs.DEVS||[]).length + ' boards', 'ok');
-    document.getElementById('status').textContent = 'Connected - Poll #' + pollCount;
-
-    const rawEl = document.getElementById('rawData');
-    if (rawEl.style.display === 'block') {
-      rawEl.textContent = JSON.stringify(lastRawData, null, 2);
-    }
-  } catch (err) {
-    addLog('Error: ' + err.message, 'error');
-    document.getElementById('status').textContent = 'Error: ' + err.message;
-    document.getElementById('status').className = 'status error';
-  }
-
-  if (polling) timer = setTimeout(doPoll, interval);
-}
-
-let proxyPort = 3939;
-
-function queryMiner(ip, port, command) {
-  return fetch('http://localhost:' + proxyPort + '/query', {
+function qm(ip, port, cmd) {
+  return fetch(PROXY + '/query', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ ip, port: parseInt(port), command })
-  }).then(r => {
-    if (!r.ok) return r.text().then(t => { throw new Error(t); });
+    body: JSON.stringify({ ip: ip, port: parseInt(port), command: cmd })
+  }).then(function(r) {
+    if (!r.ok) return r.text().then(function(t) { throw new Error(t); });
     return r.json();
   });
 }
 
-function renderMinerInfo(data) {
-  const info = data?.Msg || data?.msg || data;
-  if (!info || typeof info !== 'object') return;
+// ===== SCAN =====
+function startScan() {
+  var subnet = document.getElementById('subnet').value.trim();
+  var port = parseInt(document.getElementById('scanPort').value) || 4028;
+  if (!subnet) return;
 
-  const section = document.getElementById('minerInfoSection');
-  section.style.display = 'block';
+  document.getElementById('scanBtn').textContent = 'Stop';
+  document.getElementById('scanBtn').className = 'stop';
+  document.getElementById('scanBtn').onclick = stopScan;
+  document.getElementById('scanProgress').style.display = 'block';
+  document.getElementById('scanResults').innerHTML = '';
+  document.getElementById('scanCount').style.display = 'none';
+  addLog('Starting scan: ' + subnet);
 
-  const items = [
-    { label: 'Model', value: info.miner_type || info.minertype || info.Model || '-' },
-    { label: 'Firmware', value: info.fw_ver || info.firmware || '-' },
-    { label: 'Compile Time', value: info.CompileTime || info.compile_time || '-' },
-    { label: 'MAC', value: info.mac || info.Mac || '-' },
-    { label: 'IP', value: info.ip || info.Ip || document.getElementById('ip').value },
-    { label: 'Serial', value: info.sn || info.Serial || '-' },
-    { label: 'Network Type', value: info.nettype || info.net_type || '-' },
-    { label: 'DNS', value: info.dns || info.Dns || '-' },
-  ];
-
-  document.getElementById('minerInfoGrid').innerHTML = items
-    .filter(i => i.value && i.value !== '-')
-    .map(i => '<div class="summary-item"><div class="label">' + i.label + '</div><div class="value small">' + i.value + '</div></div>').join('');
+  fetch(PROXY + '/scan', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ subnet: subnet, port: port })
+  }).then(function(r) { return r.json(); }).then(function(data) {
+    if (data.error) { addLog('Error: ' + data.error, 'error'); resetScanBtn(); return; }
+    addLog('Scan started, ' + data.total + ' IPs to check');
+    pollScanProgress();
+  }).catch(function(err) { addLog('Scan error: ' + err.message, 'error'); resetScanBtn(); });
 }
 
-function renderSummary(data) {
-  const s = data?.SUMMARY?.[0] || data?.Msg || {};
-  const section = document.getElementById('summarySection');
-  section.style.display = 'block';
-  const grid = document.getElementById('summaryGrid');
+function stopScan() {
+  fetch(PROXY + '/scan/stop', { method: 'POST' });
+  clearTimeout(scanTimer);
+  resetScanBtn();
+  addLog('Scan stopped');
+}
 
-  const ghsAv = s['GHS av'] || 0;
-  const mhsAv = s['MHS av'] || 0;
-  let hashrate;
-  if (ghsAv > 0) {
-    hashrate = (ghsAv / 1000).toFixed(2) + ' TH/s';
-  } else if (mhsAv > 0) {
-    hashrate = (mhsAv / 1e6).toFixed(2) + ' TH/s';
-  } else {
-    hashrate = '0.00 TH/s';
+function resetScanBtn() {
+  document.getElementById('scanBtn').textContent = 'Scan';
+  document.getElementById('scanBtn').className = '';
+  document.getElementById('scanBtn').onclick = startScan;
+}
+
+function pollScanProgress() {
+  fetch(PROXY + '/scan/progress').then(function(r) { return r.json(); }).then(function(state) {
+    var pct = state.total > 0 ? Math.round((state.scanned / state.total) * 100) : 0;
+    document.getElementById('scanProgressFill').style.width = pct + '%';
+    document.getElementById('scanProgressInfo').textContent =
+      'Scanned ' + state.scanned + ' / ' + state.total + ' IPs | Found ' + state.found.length + ' miners | Current: ' + state.currentIp;
+    document.getElementById('scanStatus').textContent = state.running ? 'Scanning...' : 'Done';
+    document.getElementById('scanStatus').className = 'status-text ' + (state.running ? 'ok' : '');
+
+    renderScanResults(state.found);
+
+    if (state.running) {
+      scanTimer = setTimeout(pollScanProgress, 500);
+    } else {
+      document.getElementById('scanProgress').style.display = 'none';
+      resetScanBtn();
+      addLog('Scan complete: ' + state.found.length + ' miners found', 'ok');
+    }
+  });
+}
+
+function renderScanResults(miners) {
+  var port = parseInt(document.getElementById('scanPort').value) || 4028;
+  if (miners.length > 0) {
+    document.getElementById('scanCount').style.display = 'block';
+    document.getElementById('scanCount').textContent = miners.length + ' miners found';
   }
 
-  const items = [
-    { label: 'Hashrate', value: hashrate },
-    { label: 'Temperature', value: (s.Temperature || '-') + ' C' },
-    { label: 'Power', value: (s.Power || s['Power Consumption'] || '-') + ' W' },
-    { label: 'Fan In', value: (s['Fan Speed In'] || s.FanSpeedIn || '-') + ' RPM' },
-    { label: 'Fan Out', value: (s['Fan Speed Out'] || s.FanSpeedOut || '-') + ' RPM' },
-    { label: 'Accepted', value: (s.Accepted || 0).toLocaleString() },
-    { label: 'Rejected', value: (s.Rejected || 0).toLocaleString() },
-    { label: 'HW Errors', value: (s['Hardware Errors'] || s.HardwareErrors || 0).toLocaleString() },
-    { label: 'Uptime', value: formatUptime(s.Elapsed || 0) },
-    { label: 'Power Mode', value: s['Power Mode'] || '-' },
-    { label: 'Factory GH/s', value: ((s['Factory GHS'] || 0) / 1000).toFixed(0) + ' TH/s' },
-    { label: 'Env Temp', value: (s['Env Temp'] || s.env_temp || '-') + ' C' },
-  ];
+  miners.sort(function(a, b) {
+    var aParts = a.ip.split('.').map(Number);
+    var bParts = b.ip.split('.').map(Number);
+    for (var i = 0; i < 4; i++) { if (aParts[i] !== bParts[i]) return aParts[i] - bParts[i]; }
+    return 0;
+  });
 
-  grid.innerHTML = items.map(i => '<div class="summary-item"><div class="label">' + i.label + '</div><div class="value">' + i.value + '</div></div>').join('');
+  document.getElementById('scanResults').innerHTML = miners.map(function(m) {
+    var temp = m.temperature || 0;
+    var status = temp > 80 ? 'critical' : temp > 65 ? 'warning' : 'healthy';
+    return '<div class="scan-card ' + status + '" onclick="showDetail(\'' + m.ip + '\',' + (m.port || port) + ')">' +
+      '<div class="scan-card-ip">' + m.ip + '</div>' +
+      '<div class="scan-card-stats">' +
+        '<div class="scan-card-stat"><div class="label">Hashrate</div><div class="value">' + m.hashrate.toFixed(1) + ' TH/s</div></div>' +
+        '<div class="scan-card-stat"><div class="label">Temp</div><div class="value">' + (temp || '-') + ' C</div></div>' +
+        '<div class="scan-card-stat"><div class="label">Power</div><div class="value">' + (m.power || '-') + ' W</div></div>' +
+        '<div class="scan-card-stat"><div class="label">Fan In</div><div class="value">' + (m.fanIn || '-') + '</div></div>' +
+        '<div class="scan-card-stat"><div class="label">Fan Out</div><div class="value">' + (m.fanOut || '-') + '</div></div>' +
+        '<div class="scan-card-stat"><div class="label">Uptime</div><div class="value">' + fmtUp(m.elapsed) + '</div></div>' +
+      '</div>' +
+    '</div>';
+  }).join('');
 }
 
-function renderBoards(data, detailsData) {
-  const boards = data?.DEVS || [];
-  const details = detailsData?.DEVDETAILS || [];
-  const container = document.getElementById('boardsContainer');
+// ===== DETAIL VIEW (from scan) =====
+function fetchDetailOnce() {
+  document.getElementById('detailStatus').textContent = 'Loading...';
+  document.getElementById('detailStatus').className = 'status-text ok';
+  Promise.all([
+    qm(detailIp, detailPort, 'summary'),
+    qm(detailIp, detailPort, 'edevs'),
+    qm(detailIp, detailPort, 'devdetails').catch(function() { return null; }),
+    qm(detailIp, detailPort, 'get_miner_info').catch(function() { return null; })
+  ]).then(function(r) {
+    detailPollCount++;
+    detailRawData = { summary: r[0], edevs: r[1], devdetails: r[2], get_miner_info: r[3] };
+    if (r[3]) renderInfo(r[3], 'detailMinerInfo', 'detailMinerInfoGrid');
+    renderSummaryTo(r[0], 'detailSummary', 'detailSummaryGrid');
+    renderBoardsTo(r[1], r[2], 'detailBoards');
+    document.getElementById('detailStatus').textContent = 'Loaded';
+    updateRawIfOpen('detailRaw', detailRawData);
+  }).catch(function(err) {
+    document.getElementById('detailStatus').textContent = err.message;
+    document.getElementById('detailStatus').className = 'status-text err';
+  });
+}
 
-  container.innerHTML = boards.map((b, i) => {
-    const temp = b.Temperature || 0;
-    const status = temp > 80 ? 'critical' : temp > 65 ? 'warning' : 'healthy';
-    const statusLabel = temp > 80 ? 'CRITICAL' : temp > 65 ? 'WARNING' : 'HEALTHY';
-    const hsGH = (b['MHS av'] || 0) / 1000;
-    const hsRT = (b['HS RT'] || b['MHS 1m'] || 0) / 1000;
-    const hs15m = (b['MHS 15m'] || 0) / 1000;
-    const factoryTH = ((b['Factory GHS'] || 0) / 1000).toFixed(1);
-    const chips = b['Effective Chips'] || '-';
-    const freq = b['Chip Frequency'] || '-';
-    const upfreq = b['Upfreq Complete'] || 0;
-    const chipData = b['Chip Data'] || '-';
-    const pcbSN = b['PCB SN'] || '';
-    const tempPct = Math.min(100, (temp / 100) * 100);
-    const tempColor = temp > 80 ? '#e74c3c' : temp > 65 ? '#f5a623' : '#2ecc71';
+function toggleDetailPoll() {
+  if (detailPolling) { stopDetailPoll(); }
+  else {
+    detailPolling = true;
+    document.getElementById('detailPollBtn').textContent = 'Stop';
+    document.getElementById('detailPollBtn').className = 'stop';
+    doDetailPoll();
+  }
+}
 
-    const detail = details.find(d => d.Slot === b.Slot) || {};
-    const driver = detail.Driver || '-';
-    const model = detail.Model || detail.Name || '-';
+function stopDetailPoll() {
+  detailPolling = false;
+  clearTimeout(detailTimer);
+  document.getElementById('detailPollBtn').textContent = 'Start Polling';
+  document.getElementById('detailPollBtn').className = '';
+  document.getElementById('detailStatus').textContent = 'Stopped';
+}
 
-    let chipType = '-';
-    if (chipData && chipData !== '-') {
-      chipType = chipData;
-    }
+function doDetailPoll() {
+  if (!detailPolling) return;
+  var interval = parseInt(document.getElementById('detailInterval').value) * 1000;
+  document.getElementById('detailStatus').textContent = 'Polling...';
+  document.getElementById('detailStatus').className = 'status-text ok';
+
+  var isFirst = detailPollCount === 0;
+  var fetches = [
+    qm(detailIp, detailPort, 'summary'),
+    qm(detailIp, detailPort, 'edevs'),
+    qm(detailIp, detailPort, 'devdetails').catch(function() { return null; })
+  ];
+  if (isFirst) fetches.push(qm(detailIp, detailPort, 'get_miner_info').catch(function() { return null; }));
+  else fetches.push(Promise.resolve(null));
+
+  Promise.all(fetches).then(function(r) {
+    detailPollCount++;
+    detailRawData = { summary: r[0], edevs: r[1], devdetails: r[2], get_miner_info: r[3] };
+    if (r[3]) renderInfo(r[3], 'detailMinerInfo', 'detailMinerInfoGrid');
+    renderSummaryTo(r[0], 'detailSummary', 'detailSummaryGrid');
+    renderBoardsTo(r[1], r[2], 'detailBoards');
+    document.getElementById('detailStatus').textContent = 'Poll #' + detailPollCount;
+    updateRawIfOpen('detailRaw', detailRawData);
+  }).catch(function(err) {
+    document.getElementById('detailStatus').textContent = err.message;
+    document.getElementById('detailStatus').className = 'status-text err';
+  }).finally(function() {
+    if (detailPolling) detailTimer = setTimeout(doDetailPoll, interval);
+  });
+}
+
+// ===== SINGLE MINER VIEW =====
+function toggleSinglePoll() {
+  if (singlePolling) {
+    singlePolling = false;
+    clearTimeout(singleTimer);
+    document.getElementById('singleStartBtn').textContent = 'Start';
+    document.getElementById('singleStartBtn').className = '';
+    document.getElementById('singleStatus').textContent = 'Stopped';
+  } else {
+    singlePolling = true;
+    singlePollCount = 0;
+    document.getElementById('singleStartBtn').textContent = 'Stop';
+    document.getElementById('singleStartBtn').className = 'stop';
+    doSinglePoll();
+  }
+}
+
+function doSinglePoll() {
+  if (!singlePolling) return;
+  var ip = document.getElementById('singleIp').value;
+  var port = document.getElementById('singlePort').value;
+  var interval = parseInt(document.getElementById('singleInterval').value) * 1000;
+  document.getElementById('singleStatus').textContent = 'Polling...';
+  document.getElementById('singleStatus').className = 'status-text ok';
+
+  var isFirst = singlePollCount === 0;
+  var fetches = [
+    qm(ip, port, 'summary'),
+    qm(ip, port, 'edevs'),
+    qm(ip, port, 'devdetails').catch(function() { return null; })
+  ];
+  if (isFirst) fetches.push(qm(ip, port, 'get_miner_info').catch(function() { return null; }));
+  else fetches.push(Promise.resolve(null));
+
+  Promise.all(fetches).then(function(r) {
+    singlePollCount++;
+    singleRawData = { summary: r[0], edevs: r[1], devdetails: r[2], get_miner_info: r[3] };
+    if (r[3]) renderInfo(r[3], 'singleMinerInfo', 'singleMinerInfoGrid');
+    renderSummaryTo(r[0], 'singleSummary', 'singleSummaryGrid');
+    renderBoardsTo(r[1], r[2], 'singleBoards');
+    document.getElementById('singleStatus').textContent = 'Poll #' + singlePollCount;
+    updateRawIfOpen('singleRaw', singleRawData);
+  }).catch(function(err) {
+    document.getElementById('singleStatus').textContent = err.message;
+    document.getElementById('singleStatus').className = 'status-text err';
+  }).finally(function() {
+    if (singlePolling) singleTimer = setTimeout(doSinglePoll, interval);
+  });
+}
+
+// ===== SHARED RENDERERS =====
+function renderInfo(data, sectionId, gridId) {
+  var info = data.Msg || data.msg || data;
+  if (!info || typeof info !== 'object') return;
+  document.getElementById(sectionId).style.display = 'block';
+  var items = [
+    { l: 'Model', v: info.miner_type || info.minertype || info.Model || '' },
+    { l: 'Firmware', v: info.fw_ver || info.firmware || '' },
+    { l: 'Compile Time', v: info.CompileTime || info.compile_time || '' },
+    { l: 'MAC', v: info.mac || info.Mac || '' },
+    { l: 'IP', v: info.ip || info.Ip || '' },
+    { l: 'Serial', v: info.sn || info.Serial || '' },
+    { l: 'Net Type', v: info.nettype || info.net_type || '' },
+    { l: 'DNS', v: info.dns || info.Dns || '' },
+  ];
+  document.getElementById(gridId).innerHTML = items.filter(function(i) { return i.v; })
+    .map(function(i) { return '<div class="summary-item"><div class="label">' + i.l + '</div><div class="value small">' + i.v + '</div></div>'; }).join('');
+}
+
+function renderSummaryTo(data, sectionId, gridId) {
+  var s = (data.SUMMARY && data.SUMMARY[0]) || data.Msg || {};
+  document.getElementById(sectionId).style.display = 'block';
+  var ghsAv = s['GHS av'] || 0, mhsAv = s['MHS av'] || 0;
+  var hr = ghsAv > 0 ? (ghsAv / 1000).toFixed(2) + ' TH/s' : mhsAv > 0 ? (mhsAv / 1e6).toFixed(2) + ' TH/s' : '0.00 TH/s';
+  var items = [
+    { l: 'Hashrate', v: hr },
+    { l: 'Temperature', v: (s.Temperature || '-') + ' C' },
+    { l: 'Power', v: (s.Power || s['Power Consumption'] || '-') + ' W' },
+    { l: 'Fan In', v: (s['Fan Speed In'] || s.FanSpeedIn || '-') + ' RPM' },
+    { l: 'Fan Out', v: (s['Fan Speed Out'] || s.FanSpeedOut || '-') + ' RPM' },
+    { l: 'Accepted', v: (s.Accepted || 0).toLocaleString() },
+    { l: 'Rejected', v: (s.Rejected || 0).toLocaleString() },
+    { l: 'HW Errors', v: (s['Hardware Errors'] || s.HardwareErrors || 0).toLocaleString() },
+    { l: 'Uptime', v: fmtUp(s.Elapsed || 0) },
+    { l: 'Power Mode', v: s['Power Mode'] || '-' },
+    { l: 'Factory GH/s', v: ((s['Factory GHS'] || 0) / 1000).toFixed(0) + ' TH/s' },
+    { l: 'Env Temp', v: (s['Env Temp'] || s.env_temp || '-') + ' C' },
+  ];
+  document.getElementById(gridId).innerHTML = items.map(function(i) {
+    return '<div class="summary-item"><div class="label">' + i.l + '</div><div class="value">' + i.v + '</div></div>';
+  }).join('');
+}
+
+function renderBoardsTo(data, detailsData, containerId) {
+  var boards = data.DEVS || [];
+  var details = (detailsData && detailsData.DEVDETAILS) || [];
+  document.getElementById(containerId).innerHTML = boards.map(function(b, i) {
+    var temp = b.Temperature || 0;
+    var status = temp > 80 ? 'critical' : temp > 65 ? 'warning' : 'healthy';
+    var statusLabel = temp > 80 ? 'CRITICAL' : temp > 65 ? 'WARNING' : 'HEALTHY';
+    var hsGH = (b['MHS av'] || 0) / 1000;
+    var hsRT = (b['HS RT'] || b['MHS 1m'] || 0) / 1000;
+    var hs15m = (b['MHS 15m'] || 0) / 1000;
+    var factoryTH = ((b['Factory GHS'] || 0) / 1000).toFixed(1);
+    var chips = b['Effective Chips'] || '-';
+    var freq = b['Chip Frequency'] || '-';
+    var upfreq = b['Upfreq Complete'] || 0;
+    var chipData = b['Chip Data'] || '-';
+    var pcbSN = b['PCB SN'] || '';
+    var tempPct = Math.min(100, (temp / 100) * 100);
+    var tempColor = temp > 80 ? '#e74c3c' : temp > 65 ? '#f5a623' : '#2ecc71';
+    var detail = details.find(function(d) { return d.Slot === b.Slot; }) || {};
+    var driver = detail.Driver || '-';
+    var model = detail.Model || detail.Name || '-';
+
+    var pctOfFactory = 0;
+    if (b['Factory GHS'] > 0) pctOfFactory = Math.round(((b['MHS av'] || 0) / 1000) / (b['Factory GHS'] / 1000) * 100);
 
     return '<div class="board-card ' + status + '">' +
-      '<div class="board-header">' +
-        '<span class="board-name">SM' + (b.Slot ?? i) + '</span>' +
-        '<span class="board-status ' + status + '">' + statusLabel + '</span>' +
-      '</div>' +
+      '<div class="board-header"><span class="board-name">SM' + (b.Slot != null ? b.Slot : i) + '</span><span class="board-status ' + status + '">' + statusLabel + '</span></div>' +
       '<div class="board-stats">' +
-        '<div class="board-stat"><div class="label">Temperature</div><div class="value">' + temp.toFixed(1) + ' C</div></div>' +
-        '<div class="board-stat"><div class="label">Frequency</div><div class="value">' + freq + ' MHz</div></div>' +
-        '<div class="board-stat"><div class="label">Hashrate (avg)</div><div class="value">' + hsGH.toFixed(2) + ' GH/s</div></div>' +
-        '<div class="board-stat"><div class="label">Hashrate (RT)</div><div class="value">' + hsRT.toFixed(2) + ' GH/s</div></div>' +
-        '<div class="board-stat"><div class="label">Hashrate (15m)</div><div class="value">' + hs15m.toFixed(2) + ' GH/s</div></div>' +
-        '<div class="board-stat"><div class="label">Factory GH/s</div><div class="value">' + factoryTH + ' TH/s</div></div>' +
-        '<div class="board-stat"><div class="label">Eff. Chips</div><div class="value">' + chips + '</div></div>' +
-        '<div class="board-stat"><div class="label">Upfreq Done</div><div class="value">' + (upfreq ? 'Yes' : 'No') + '</div></div>' +
+        bs('Temperature', temp.toFixed(1) + ' C') +
+        bs('Frequency', freq + ' MHz') +
+        bs('Hashrate (avg)', hsGH.toFixed(2) + ' GH/s') +
+        bs('Hashrate (RT)', hsRT.toFixed(2) + ' GH/s') +
+        bs('Hashrate (15m)', hs15m.toFixed(2) + ' GH/s') +
+        bs('Factory GH/s', factoryTH + ' TH/s') +
+        bs('Eff. Chips', chips) +
+        bs('Upfreq Done', upfreq ? 'Yes' : 'No') +
+        bs('% of Factory', pctOfFactory + '%') +
       '</div>' +
       '<div class="board-meta">' +
-        '<div class="board-meta-row"><span class="label">Chip Data</span><span class="value">' + chipType + '</span></div>' +
-        '<div class="board-meta-row"><span class="label">PCB S/N</span><span class="value">' + pcbSN + '</span></div>' +
-        (model !== '-' ? '<div class="board-meta-row"><span class="label">Model</span><span class="value">' + model + '</span></div>' : '') +
-        (driver !== '-' ? '<div class="board-meta-row"><span class="label">Driver</span><span class="value">' + driver + '</span></div>' : '') +
+        mr('Chip Data', chipData) +
+        mr('PCB S/N', pcbSN) +
+        (model !== '-' ? mr('Model', model) : '') +
+        (driver !== '-' ? mr('Driver', driver) : '') +
       '</div>' +
       '<div class="temp-bar"><div class="temp-bar-fill" style="width:' + tempPct + '%;background:' + tempColor + '"></div></div>' +
     '</div>';
   }).join('');
 }
 
-function formatUptime(seconds) {
-  const d = Math.floor(seconds / 86400);
-  const h = Math.floor((seconds % 86400) / 3600);
-  const m = Math.floor((seconds % 3600) / 60);
-  return d > 0 ? d + 'd ' + h + 'h ' + m + 'm' : h + 'h ' + m + 'm';
+function bs(l, v) { return '<div class="board-stat"><div class="label">' + l + '</div><div class="value">' + v + '</div></div>'; }
+function mr(l, v) { return '<div class="board-meta-row"><span class="label">' + l + '</span><span class="value">' + v + '</span></div>'; }
+
+function updateRawIfOpen(id, data) {
+  var el = document.getElementById(id);
+  if (el.style.display === 'block') el.textContent = JSON.stringify(data, null, 2);
 }
 
-document.getElementById('status').textContent = 'Ready - proxy on port ' + proxyPort;
-addLog('Hashboard Monitor ready. Proxy must be running on port ' + proxyPort);
-addLog('Start proxy: node hashboard-proxy.js');
+function fmtUp(s) {
+  var d = Math.floor(s / 86400), h = Math.floor((s % 86400) / 3600), m = Math.floor((s % 3600) / 60);
+  return d > 0 ? d + 'd ' + h + 'h ' + m + 'm' : h + 'h ' + m + 'm';
+}
 </script>
 </body>
 </html>

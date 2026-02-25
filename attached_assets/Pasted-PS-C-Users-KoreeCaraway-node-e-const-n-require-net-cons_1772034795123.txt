@@ -1,0 +1,15 @@
+PS C:\Users\KoreeCaraway> node -e "const n=require('net');const s=new n.Socket();let d='';s.setTimeout(5000);s.connect(4028,'10.21.29.53',()=>{console.log('Connected...');s.write('{""command"":""edevs""}')});s.on('data',c=>{d+=c;console.log('Got '+c.length+' bytes');if(c.toString().includes('\0')){s.destroy();try{console.log(JSON.stringify(JSON.parse(d.replace(/\0/g,'')),null,2))}catch{console.log(d)}}});s.on('end',()=>{console.log('Connection closed');if(d)try{console.log(JSON.stringify(JSON.parse(d.replace(/\0/g,'')),null,2)}catch{console.log(d)}});s.on('timeout',()=>{s.destroy();console.log('Timeout - no response in 5s')});s.on('error',e=>console.log('Error:',e.message))"
+[eval]:1
+const n=require('net');const s=new n.Socket();let d='';s.setTimeout(5000);s.connect(4028,'10.21.29.53',()=>{console.log('Connected...');s.write('{command:edevs}')});s.on('data',c=>{d+=c;console.log('Got '+c.length+' bytes');if(c.toString().includes('\0')){s.destroy();try{console.log(JSON.stringify(JSON.parse(d.replace(/\0/g,'')),null,2))}catch{console.log(d)}}});s.on('end',()=>{console.log('Connection closed');if(d)try{console.log(JSON.stringify(JSON.parse(d.replace(/\0/g,'')),null,2)}catch{console.log(d)}});s.on('timeout',()=>{s.destroy();console.log('Timeout - no response in 5s')});s.on('error',e=>console.log('Error:',e.message))
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        ^
+
+SyntaxError: missing ) after argument list
+    at makeContextifyScript (node:internal/vm:185:14)
+    at node:internal/process/execution:107:22
+    at [eval]-wrapper:6:24
+    at runScript (node:internal/process/execution:101:62)
+    at evalScript (node:internal/process/execution:133:3)
+    at node:internal/main/eval_string:51:3
+
+Node.js v20.17.0
+PS C:\Users\KoreeCaraway>
